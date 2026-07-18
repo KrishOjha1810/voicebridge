@@ -19,9 +19,25 @@ MODEL_URL = (
 )
 
 
+# Hotkey daemons (skhd) run with a minimal PATH that often lacks Homebrew,
+# so we look in the usual brew locations too, not just PATH.
+_BREW_BINS = ("/opt/homebrew/bin", "/usr/local/bin")
+
+
+def _find(name: str) -> str:
+    p = shutil.which(name)
+    if p:
+        return p
+    for d in _BREW_BINS:
+        cand = os.path.join(d, name)
+        if os.path.exists(cand):
+            return cand
+    return ""
+
+
 def whisper_bin() -> str:
     for name in ("whisper-cli", "whisper-cpp", "main"):
-        p = shutil.which(name)
+        p = _find(name)
         if p:
             return p
     return ""
@@ -30,7 +46,7 @@ def whisper_bin() -> str:
 def have_deps() -> dict:
     return {
         "whisper": whisper_bin(),
-        "rec": shutil.which("rec") or "",
+        "rec": _find("rec"),
         "model": str(MODEL) if MODEL.exists() else "",
     }
 
@@ -58,7 +74,7 @@ def record(wav: str, max_secs: int = 30,
     Waits for you to start speaking, then ends after `silence_stop`
     seconds of quiet. Whisper wants 16kHz mono, so we record that directly.
     """
-    rec = shutil.which("rec")
+    rec = _find("rec")
     if not rec:
         core.log("record: sox `rec` not found")
         return False

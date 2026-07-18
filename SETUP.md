@@ -27,29 +27,38 @@ manually in **System Settings -> Privacy & Security**:
 
 If a paste does nothing, it's almost always the Accessibility toggle.
 
-## Seamless hands-free use (recommended)
+## Hands-free hotkey (already set up via skhd)
 
-The point is to talk without leaving the Claude Code window. Bind
-`vb listen --send` to a global hotkey so triggering it never steals focus:
-
-### Option A - macOS Shortcuts (no install)
-
-1. Shortcuts app -> new shortcut -> "Run Shell Script".
-2. Command: `/Users/krishojha/voicebridge/bin/vb listen --send`
-3. Assign a keyboard shortcut in the shortcut's settings.
-
-### Option B - Raycast / Alfred
-
-Add a Script Command that runs the same line, bind a hotkey.
-
-### Option C - skhd (power users)
+A global hotkey is installed and the skhd service is running:
 
 ```
-brew install koekeishiya/formulae/skhd
-# ~/.skhdrc
-cmd + shift - space : /Users/krishojha/voicebridge/bin/vb listen --send
-skhd --start-service
+Hotkey:  Cmd + Alt + Ctrl + V
+Action:  vb listen --send --cue   (hush, record, transcribe, paste, send)
+Config:  ~/.skhdrc
 ```
+
+**One manual step:** grant skhd **Accessibility** permission, or the hotkey
+won't fire. System Settings -> Privacy & Security -> Accessibility -> add /
+enable `skhd` (`/opt/homebrew/bin/skhd`). Also grant **Microphone** to skhd
+the first time it records.
+
+Audio cues (so you get feedback with no terminal): Tink = started
+listening, Pop = stopped, Basso = heard nothing.
+
+Manage the service:
+
+```
+skhd --restart-service    # after editing ~/.skhdrc
+skhd --stop-service       # disable the hotkey
+```
+
+Change the key by editing `~/.skhdrc` then restarting the service.
+
+### Alternatives (no skhd)
+
+- **macOS Shortcuts:** new shortcut -> Run Shell Script ->
+  `/Users/krishojha/voicebridge/bin/vb listen --send --cue`, assign a key.
+- **Raycast / Alfred:** a Script Command running the same line.
 
 ## The loop, day to day
 
