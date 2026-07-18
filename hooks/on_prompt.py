@@ -31,6 +31,15 @@ def directive(lang: str) -> str:
 
 
 def main() -> int:
+    # Record which session this prompt belongs to; talkd uses it so
+    # /voice-on binds to THIS session, never a guess.
+    data = core.read_hook_input()
+    sid = data.get("session_id", "")
+    tp = data.get("transcript_path", "")
+    if sid and tp:
+        from vb import talkd
+        talkd.record_prompt(sid, tp)
+
     lang = core.get_lang()
     if lang:
         print(directive(lang))

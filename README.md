@@ -65,26 +65,37 @@ bin/vb log              debug log
 `vb on` targets your most recently active session automatically. Optional:
 add `~/voicebridge/bin` to your PATH to just type `vb`.
 
-### Agent mode, channel-free (`vb talk`) - works on ANY account
+### Agent mode: /voice-on inside any session - works on ANY account
 
-The mode to use when your org blocks Channels (Team/Enterprise accounts do
-by default). You keep a normal `claude` session open in its own window;
-`vb talk` runs beside it:
+The primary mode, and it works like /remote-control: toggle it per session,
+from inside the session.
 
 ```
-claude                 # window 1: your normal session
-vb talk                # window 2: the voice link
+/voice-on     # in any Claude Code session: voice binds to THIS session
+/voice-off    # leave voice mode (or just say "stop listening")
 ```
 
-Keep the Claude window focused and just talk: your speech is transcribed
-locally and typed into the session; new replies are spoken aloud. If a
-reply lands while you're silent, the wait is cut short and it's spoken
-right away. Say **"stop listening"** to end. Fire-and-forget injection:
-nothing can hang, and "stop" always works.
+Then keep that window focused and talk: speech is transcribed locally and
+typed into the session; replies are spoken aloud. Run multiple sessions?
+Voice each one you want with /voice-on; the mic follows whichever voiced
+session you interacted with most recently (there is only one mic). Binding
+is exact, not guessed: the prompt hook records each session's identity, so
+/voice-on attaches to the session you typed it in.
 
-Tradeoff vs the channel mode: the Claude window must stay focused (the
-paste lands at your cursor), and it binds to your most recently active
-session (it re-binds after your first spoken message to be sure).
+Details: noise like "(air whooshing)" is filtered, never sent; a reply that
+lands while you're silent cuts the wait and is spoken immediately;
+fire-and-forget injection means nothing can hang; hooks/watcher stay silent
+while voice mode owns a session (no double-speak), with stale-flag
+protection. Backend: `vb talkd on|off|status|stop`; slash commands live in
+`commands/` (installed at `~/.claude/commands/`).
+
+Tradeoff: the voiced session's window must stay focused when you speak (the
+text lands at your cursor).
+
+### Manual voice link (`vb talk`)
+
+Older manual variant: binds to your most recently active session from
+outside. Prefer /voice-on.
 
 ### Agent mode via Channels (`vb session`) - needs Channels enabled
 

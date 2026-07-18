@@ -8,10 +8,12 @@ Usage:
   vb test                    speak a short test line
   vb say TEXT                speak arbitrary text now
   vb log                     show the debug log
-  vb talk                    voice link to your OPEN Claude session: talk
-                             hands-free, replies spoken. Channel-free (works
-                             when your org blocks Channels). Keep the Claude
-                             window focused. "stop listening" ends.
+  vb talkd on|off|status     per-session voice mode backend. Inside a Claude
+                             session, use /voice-on and /voice-off instead
+                             (they bind voice to THAT session, like
+                             /remote-control). "stop listening" also exits.
+  vb talk                    manual voice link to your most recent session
+                             (prefer /voice-on inside the session).
   vb session [DIR]           agent mode via the voicemode channel (needs
                              Channels enabled for your account/org).
   vb mic on|off              toggle the in-session mic (voicemode channel)
@@ -134,6 +136,24 @@ def main(argv) -> int:
     elif cmd == "log":
         print(core.LOG_FILE.read_text() if core.LOG_FILE.exists()
               else "(no log yet)")
+
+    elif cmd == "talkd":
+        from vb import talkd
+        sub = rest[0] if rest else "status"
+        if sub == "on":
+            print(talkd.voice_on())
+        elif sub == "off":
+            print(talkd.voice_off())
+        elif sub == "status":
+            print(talkd.status())
+        elif sub == "stop":
+            talkd.stop_daemon()
+            print("talkd stopped")
+        elif sub == "__run__":
+            return talkd.run_daemon()
+        else:
+            print("usage: vb talkd on|off|status|stop")
+            return 1
 
     elif cmd == "talk":
         from vb import talk

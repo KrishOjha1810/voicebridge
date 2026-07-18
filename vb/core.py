@@ -29,8 +29,20 @@ MIC_FLAG = STATE_DIR / "mic_on"
 
 
 def mic_active() -> bool:
-    """True while the voicemode channel owns the conversation's voice."""
-    return MIC_FLAG.exists()
+    """True while another voicebridge component owns the session's voice
+    (voicemode channel mic, or an active talkd session). Hooks and the
+    watcher stay silent then, so nothing is spoken twice.
+
+    MIC_FLAG only counts while a voicemode channel process is actually
+    running, so a stale flag (e.g. a failed `vb session` launch) can never
+    silence the hooks."""
+    if (STATE_DIR / "talk" / "active.json").exists():
+        return True
+    if MIC_FLAG.exists():
+        r = subprocess.run(["pgrep", "-f", "channel/voicemode.ts"],
+                           capture_output=True)
+        return r.returncode == 0
+    return False
 
 # Map a chosen language to the best-fitting macOS `say` voice. Latin-script
 # languages (incl. Hinglish) sound best with the Indian-accent English voice;
