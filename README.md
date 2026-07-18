@@ -1,13 +1,47 @@
 # voicebridge
 
-A voice teammate that rides on top of Claude Code **Remote Control**. Your
-agent stays on your machine; your phone (or your desk) becomes a hands-free
-conversation with it: it narrates as it works, asks you real questions out
-loud, you cut in when needed, and you get a diff you can actually trust.
+**Talk to Claude Code like a teammate.** voicebridge turns your Claude Code
+sessions into hands-free voice conversations: you speak, your words land in
+the real session (your files, your context), and Claude answers out loud in
+a natural neural voice. On your Mac, or from your phone anywhere.
 
-Not a new sync layer. Remote Control already gives us the robust, free,
-disconnect-surviving pipe. voicebridge adds the two things it lacks: a
-**narrating two-way voice** and a **trustworthy review** on a small screen.
+Everything runs locally: speech-to-text is whisper.cpp on your machine,
+text-to-speech is Kokoro (bundled setup) or macOS voices. Free, no cloud
+voice services, no per-minute fees.
+
+## What you get
+
+- **/voice-on** inside any session: hands-free conversation with that exact
+  session. Talk, hear the reply, talk again. `/voice-off` or say "stop
+  listening" to end.
+- **Wake-word mode** (`/voice-wake`): ambient, only reacts to "hey Claude
+  ...", ignores everything else. Agent mode (`/voice-agent`) takes
+  everything.
+- **Barge-in**: talk over a long answer out loud and it stops and takes
+  your words as the next prompt.
+- **Natural voice**: Kokoro neural TTS (54 voices, runs on CPU, Apache
+  licensed) with macOS `say` as fallback. `vb engine kokoro`.
+- **Phone, free**: a PWA "call" page (`vb call on` + `vb call tunnel`),
+  open on your phone, tap Start once, then talk hands-free from anywhere.
+  Plus a Telegram bridge (`vb remote on`) for voice notes.
+- Smart capture: thinking pauses don't split your prompt, mic noise is
+  filtered, and it never hears its own voice (echo guard).
+
+## Quickstart (3 steps)
+
+```bash
+git clone https://github.com/KrishOjha1810/voicebridge ~/voicebridge
+~/voicebridge/install.sh        # deps, model, hooks, commands, health check
+```
+
+Grant the two macOS prompts (Microphone + Accessibility for your terminal),
+then inside any Claude Code session:
+
+```
+/voice-on
+```
+
+Speak. That's it.
 
 ## Install (fresh Mac)
 
@@ -161,6 +195,33 @@ answers. Long turns get soft ticks and spoken "still working" updates.
 Say "stop" (even "stop stop stop") to end; Ctrl-C is always clean.
 
 The phone version of the call feel is Vapi (`mobile/vapi/`).
+
+### Better voice: Kokoro (recommended)
+
+Kokoro is an open neural TTS (Apache 2.0) that sounds far more human than
+the default macOS voices, runs on plain CPU, and needs no Apple downloads.
+One-time setup (~800MB total):
+
+```bash
+brew install python@3.10 2>/dev/null || true
+/opt/homebrew/bin/python3.10 -m venv ~/.voicebridge/kokoro-venv
+~/.voicebridge/kokoro-venv/bin/pip install kokoro-onnx soundfile
+curl -fSL -o ~/.voicebridge/models/kokoro-v1.0.onnx --create-dirs \
+  https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx
+curl -fSL -o ~/.voicebridge/models/voices-v1.0.bin \
+  https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin
+```
+
+Then:
+
+```
+vb engine kokoro        # starts the local server, switches the engine
+vb voice af_heart       # pick any of 54 voices: curl -s localhost:8798/voices
+vb test                 # hear it
+```
+
+`vb engine say` switches back; if the Kokoro server is down, speech
+automatically falls back to `say`, nothing breaks.
 
 ### Language & conversation tone
 

@@ -277,18 +277,9 @@ def _speak_interruptible(text: str) -> str:
     t = core.clean_for_speech(text, max_chars=6000)
     if not t or core._recently_spoken(t):
         return ""
-    try:
-        (core.STATE_DIR / "last_spoken_text").write_text(
-            json.dumps({"text": t, "ts": time.time()}))
-    except Exception:
-        pass
-    voice = core.get_voice()
-    cmd = ["say", "-r", core.get_rate()]
-    if voice:
-        cmd += ["-v", voice]
-    cmd.append(t)
-    say = subprocess.Popen(cmd, stdout=subprocess.DEVNULL,
-                           stderr=subprocess.DEVNULL)
+    say = core.start_speech(t)   # engine-aware (kokoro or say) + echo record
+    if say is None:
+        return ""
     wav = str(STATE / "barge.wav")
     try:
         while say.poll() is None:
@@ -314,7 +305,8 @@ def _speak_interruptible(text: str) -> str:
             heard = stt.transcribe(wav)
             if not heard or is_noise(heard) or _is_echo(heard, 90):
                 continue                # our own voice or noise; keep talking
-            subprocess.run(["pkill", "-x", "say"], capture_output=True)
+            say.terminate()
+            core.hush()
             say.wait()
             core.log(f"talkd barge-in: {heard[:80]}")
             return heard
@@ -324,9 +316,16 @@ def _speak_interruptible(text: str) -> str:
 
 
 def _any_speech_playing() -> bool:
-    """True while ANY `say` is talking (ours, a hook's, a stale watcher's)."""
-    return subprocess.run(["pgrep", "-x", "say"],
-                          capture_output=True).returncode == 0
+    """True while ANY speech is playing: `say` from anywhere, or the current
+    engine player tracked in speech.pid (kokoro/afplay)."""
+    if subprocess.run(["pgrep", "-x", "say"],
+                      capture_output=True).returncode == 0:
+        return True
+    try:
+        os.kill(int(core.SPEECH_PID.read_text().strip()), 0)
+        return True
+    except Exception:
+        return False
 
 
 def _wait_for_silence(max_wait: float = 60.0) -> None:

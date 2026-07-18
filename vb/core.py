@@ -208,6 +208,100 @@ def _recently_spoken(cleaned: str) -> bool:
     return False
 
 
+ENGINE_FILE = STATE_DIR / "engine"     # "say" (default) | "kokoro"
+SPEECH_PID = STATE_DIR / "speech.pid"  # pid of the current speech player
+KOKORO_PORT = int(os.environ.get("VB_TTS_PORT", "8798"))
+_KOKORO_VOICE_RE = re.compile(r"^[a-z]{2}_[a-z]+$")
+
+
+def get_engine() -> str:
+    try:
+        e = ENGINE_FILE.read_text().strip()
+        return e if e in ("say", "kokoro") else "say"
+    except Exception:
+        return "say"
+
+
+def _kokoro_wav(text: str) -> str:
+    """Synthesize via the local Kokoro server; '' if unavailable."""
+    wav = str(STATE_DIR / "speech.wav")
+    voice = get_voice()
+    if not _KOKORO_VOICE_RE.match(voice or ""):
+        voice = "af_heart"
+    try:
+        speed = max(0.6, min(1.4, float(get_rate()) / 175.0))
+    except ValueError:
+        speed = 1.0
+    payload = json.dumps({"text": text, "voice": voice, "speed": speed})
+    try:
+        r = subprocess.run(
+            ["curl", "-s", "-m", "60", "-X", "POST",
+             "-H", "Content-Type: application/json", "-d", payload,
+             f"http://127.0.0.1:{KOKORO_PORT}/synth", "-o", wav],
+            capture_output=True, timeout=70)
+        if r.returncode == 0 and os.path.getsize(wav) > 1000:
+            with open(wav, "rb") as f:
+                if f.read(4) == b"RIFF":
+                    return wav
+    except Exception as e:
+        log(f"kokoro synth failed: {e}")
+    return ""
+
+
+def hush() -> None:
+    """Stop whatever speech is playing (any engine)."""
+    subprocess.run(["pkill", "-x", "say"], capture_output=True)
+    try:
+        os.kill(int(SPEECH_PID.read_text().strip()), 15)
+    except Exception:
+        pass
+
+
+def start_speech(text: str):
+    """Start speaking cleaned text; returns the player Popen (or None).
+
+    Engine 'kokoro' synthesizes on the local server and plays the wav;
+    anything failing falls back to macOS `say`. Every utterance is recorded
+    for the echo guard, so the mic never mistakes our voice for the user."""
+    try:
+        STATE_DIR.mkdir(parents=True, exist_ok=True)
+        (STATE_DIR / "last_spoken_text").write_text(
+            json.dumps({"text": text, "ts": time.time()}))
+    except Exception:
+        pass
+    p = None
+    if get_engine() == "kokoro":
+        wav = _kokoro_wav(text)
+        if wav:
+            try:
+                p = subprocess.Popen(["afplay", wav],
+                                     stdout=subprocess.DEVNULL,
+                                     stderr=subprocess.DEVNULL,
+                                     start_new_session=True)
+            except Exception as e:
+                log(f"afplay failed: {e}")
+    if p is None:
+        voice = get_voice()
+        if _KOKORO_VOICE_RE.match(voice or ""):
+            voice = ""   # say can't use kokoro voice names
+        cmd = ["say", "-r", get_rate()]
+        if voice:
+            cmd += ["-v", voice]
+        cmd.append(text)
+        try:
+            p = subprocess.Popen(cmd, stdout=subprocess.DEVNULL,
+                                 stderr=subprocess.DEVNULL,
+                                 start_new_session=True)
+        except Exception as e:
+            log(f"say failed: {e}")
+            return None
+    try:
+        SPEECH_PID.write_text(str(p.pid))
+    except Exception:
+        pass
+    return p
+
+
 def speak(text: str, blocking: bool = False) -> None:
     """Speak text. Non-blocking by default (hooks); blocking for converse mode
     so we finish talking before we listen again. New speech cuts off old.
@@ -219,37 +313,13 @@ def speak(text: str, blocking: bool = False) -> None:
         return
     if _recently_spoken(text):
         return
-    try:
-        # Interrupt whatever is currently being said (crude barge-in).
-        subprocess.run(["pkill", "-x", "say"], capture_output=True)
-    except Exception:
-        pass
-    # Record what we're about to say, so listeners can drop the echo of our
-    # own voice if the mic picks it up (see talkd's echo guard).
-    try:
-        STATE_DIR.mkdir(parents=True, exist_ok=True)
-        (STATE_DIR / "last_spoken_text").write_text(
-            json.dumps({"text": text, "ts": time.time()}))
-    except Exception:
-        pass
-    voice = get_voice()
-    cmd = ["say", "-r", get_rate()]
-    if voice:
-        cmd += ["-v", voice]
-    cmd.append(text)
-    try:
-        if blocking:
-            subprocess.run(cmd, stdout=subprocess.DEVNULL,
-                           stderr=subprocess.DEVNULL)
-        else:
-            subprocess.Popen(
-                cmd,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                start_new_session=True,  # survive the hook process exiting
-            )
-    except Exception as e:
-        log(f"say failed: {e}")
+    hush()
+    p = start_speech(text)
+    if p is not None and blocking:
+        try:
+            p.wait()
+        except Exception:
+            pass
 
 
 def newest_transcript() -> str:
