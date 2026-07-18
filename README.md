@@ -36,25 +36,40 @@ get there faster.
 
 ## What works today (Milestone 1: voice OUT)
 
-- `Stop` hook speaks Claude's final reply each turn.
-- `Notification` hook speaks the moment Claude needs a decision.
-- Code blocks, links, and markdown are stripped; length capped at a
-  sentence boundary. New speech interrupts old (seed of barge-in).
-- Non-blocking: `say` is detached, so hooks never delay your session.
+Two independent paths deliver spoken output, and they dedup against each
+other so you never hear anything twice:
+
+1. **Transcript watcher** (`vb on`): a background daemon tails your live
+   session transcript and speaks new assistant replies as they land. This
+   works in an **already-running** Claude Code session, no restart needed.
+2. **Hooks** (`Stop`, `Notification`): activate on the next fresh session
+   and cover decision moments. Wired into `~/.claude/settings.json`.
+
+- Code blocks, links, and markdown stripped; length capped at a sentence
+  boundary. New speech interrupts old (seed of barge-in).
+- Non-blocking: `say` is detached, so nothing delays your session.
 - Opt-in via a flag file, so it never surprises you.
 
 ### Control it
 
 ```
-bin/vb on        # turn spoken output on
-bin/vb off       # turn it off (also stops current speech)
-bin/vb status    # show state + config
-bin/vb test      # speak a test line
-bin/vb say TEXT  # speak arbitrary text
-bin/vb log       # debug log
+bin/vb on [--narrate]   speak on + start the watcher (--narrate also
+                        announces tool-only turns, e.g. "Running Bash.")
+bin/vb off              speak off + stop the watcher + hush now
+bin/vb status           show state, watcher, config
+bin/vb test             speak a test line
+bin/vb say TEXT         speak arbitrary text
+bin/vb log              debug log
 ```
 
-Optional: add `~/voicebridge/bin` to your PATH to just type `vb`.
+`vb on` targets your most recently active session automatically. Optional:
+add `~/voicebridge/bin` to your PATH to just type `vb`.
+
+### Talk back (input)
+
+Voice input already works through Claude Code's native `/voice` (hold
+spacebar and speak). Combined with `vb on`, that's a full voice loop today.
+Private local dictation (whisper.cpp) for hands-free automation is M2.
 
 ### Config (env vars)
 

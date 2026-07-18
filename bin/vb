@@ -2,58 +2,113 @@
 """vb: control voicebridge from the terminal.
 
 Usage:
-  vb on          turn spoken output on (creates the enable flag)
-  vb off         turn spoken output off
-  vb status      show whether voice is on and current config
-  vb test        speak a short test line
-  vb say TEXT    speak arbitrary text now
-  vb log         show the last lines of the debug log
+  vb on [PATH] [--narrate]   enable speech + start the transcript watcher
+  vb off                     disable speech + stop the watcher + hush
+  vb status                  show state, watcher, and config
+  vb test                    speak a short test line
+  vb say TEXT                speak arbitrary text now
+  vb log                     show the debug log
+
+PATH defaults to the most recently modified Claude Code transcript, which
+is your current live session. --narrate also speaks tool-only turns
+("Running Bash."). The watcher makes voice work in an already-running
+session without restarting Claude Code.
 """
+import subprocess
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from vb import core  # noqa: E402
 
+SELF = str(Path(__file__).resolve())
+
+
+def start_watcher(path: str, narrate: bool) -> str:
+    if core.watcher_alive():
+        return "watcher already running"
+    args = [sys.executable, SELF, "__watch__", path]
+    if narrate:
+        args.append("--narrate")
+    p = subprocess.Popen(
+        args,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    core.STATE_DIR.mkdir(parents=True, exist_ok=True)
+    core.WATCH_PID.write_text(str(p.pid))
+    return f"watcher started (pid {p.pid})"
+
+
+def stop_watcher() -> None:
+    try:
+        pid = int(core.WATCH_PID.read_text().strip())
+        import os
+        os.kill(pid, 15)
+    except Exception:
+        pass
+    try:
+        core.WATCH_PID.unlink()
+    except FileNotFoundError:
+        pass
+
 
 def main(argv) -> int:
     cmd = argv[0] if argv else "status"
+    rest = argv[1:]
 
     if cmd == "on":
+        narrate = "--narrate" in rest
+        pos = [a for a in rest if not a.startswith("--")]
+        path = pos[0] if pos else core.newest_transcript()
         core.STATE_DIR.mkdir(parents=True, exist_ok=True)
         core.ENABLED_FLAG.touch()
         print("voicebridge: ON")
-        core.speak("Voice bridge on.")
+        print(f"target : {path or '(none found)'}")
+        print(start_watcher(path, narrate))
+        core.speak("Voice bridge on. I'll speak as I work.")
+
     elif cmd == "off":
         try:
             core.ENABLED_FLAG.unlink()
         except FileNotFoundError:
             pass
-        import subprocess
+        stop_watcher()
         subprocess.run(["pkill", "-x", "say"], capture_output=True)
         print("voicebridge: OFF")
+
     elif cmd == "status":
         print(f"enabled : {core.is_enabled()}")
+        print(f"watcher : {'running' if core.watcher_alive() else 'stopped'}")
         print(f"voice   : {core.VOICE or '(system default)'}")
         print(f"rate    : {core.RATE} wpm")
         print(f"maxchars: {core.MAX_CHARS}")
         print(f"state   : {core.STATE_DIR}")
+
     elif cmd == "test":
         core.STATE_DIR.mkdir(parents=True, exist_ok=True)
         core.speak("Voice bridge is working. I will narrate what I do and "
                    "ask you when I need a decision.")
         print("spoke test line")
+
     elif cmd == "say":
-        text = " ".join(argv[1:])
+        text = " ".join(rest)
         if not text:
             print("usage: vb say TEXT")
             return 1
         core.speak(text)
+
     elif cmd == "log":
-        if core.LOG_FILE.exists():
-            print(core.LOG_FILE.read_text())
-        else:
-            print("(no log yet)")
+        print(core.LOG_FILE.read_text() if core.LOG_FILE.exists()
+              else "(no log yet)")
+
+    elif cmd == "__watch__":
+        # Internal: the daemon entrypoint launched by `vb on`.
+        narrate = "--narrate" in rest
+        pos = [a for a in rest if not a.startswith("--")]
+        core.watch_transcript(pos[0] if pos else "", narrate=narrate)
+
     else:
         print(__doc__)
         return 1

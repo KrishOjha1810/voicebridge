@@ -14,8 +14,11 @@ Claude speaks. The "I finally know what it's doing" half.
 - [x] `Notification` hook -> speak decision moments
 - [x] non-blocking `say`, new speech interrupts old
 - [x] opt-in flag + `vb` CLI + config
-- [ ] narration via `PreToolUse`: short spoken "editing auth.py now"
-      (throttle so it doesn't chatter; summarize, don't read every call)
+- [x] transcript watcher daemon: speaks replies in a live session with no
+      restart; cross-process dedup so watcher + hooks never double-speak
+- [x] optional `--narrate` for tool-only turns ("Running Bash.")
+- [ ] smarter narration via `PreToolUse`: name the file being edited,
+      throttle so it doesn't chatter; summarize, don't read every call
 
 ## M2 - Voice IN (local, private)
 

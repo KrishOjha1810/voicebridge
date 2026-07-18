@@ -9,15 +9,23 @@ Design notes:
   which is the seed of real barge-in later.
 """
 
+import hashlib
 import json
 import os
 import re
 import subprocess
+import time
 from pathlib import Path
 
 STATE_DIR = Path(os.path.expanduser("~/.voicebridge"))
 ENABLED_FLAG = STATE_DIR / "enabled"
 LOG_FILE = STATE_DIR / "log"
+LAST_SPOKEN = STATE_DIR / "last_spoken"
+WATCH_PID = STATE_DIR / "watch.pid"
+
+# Don't speak the same text twice within this window. This is what lets the
+# transcript watcher and the Stop hook coexist without double-speaking.
+DEDUP_WINDOW_S = 20.0
 
 # Config via env, with sane defaults. Override in your shell profile.
 VOICE = os.environ.get("VOICEBRIDGE_VOICE", "")           # "" = system default
@@ -118,10 +126,34 @@ def last_assistant_text(transcript_path: str) -> str:
     return ""
 
 
+def _recently_spoken(cleaned: str) -> bool:
+    """True if this exact text was spoken within the dedup window.
+
+    Shared across processes via a state file, so whichever of the watcher
+    or the Stop hook gets there first wins and the other stays quiet.
+    """
+    h = hashlib.sha1(cleaned.encode("utf-8", "ignore")).hexdigest()
+    now = time.time()
+    try:
+        prev_h, prev_t = LAST_SPOKEN.read_text().split("\n")[:2]
+        if prev_h == h and (now - float(prev_t)) < DEDUP_WINDOW_S:
+            return True
+    except Exception:
+        pass
+    try:
+        STATE_DIR.mkdir(parents=True, exist_ok=True)
+        LAST_SPOKEN.write_text(f"{h}\n{now}\n")
+    except Exception:
+        pass
+    return False
+
+
 def speak(text: str) -> None:
     """Speak text without blocking the hook. New speech cuts off old speech."""
     text = clean_for_speech(text)
     if not text:
+        return
+    if _recently_spoken(text):
         return
     try:
         # Interrupt whatever is currently being said (crude barge-in).
@@ -141,6 +173,104 @@ def speak(text: str) -> None:
         )
     except Exception as e:
         log(f"say failed: {e}")
+
+
+def newest_transcript() -> str:
+    """Path to the most recently modified Claude Code transcript.
+
+    While a session is live its file is the one being updated, so newest =
+    current session. Returns "" if none found.
+    """
+    root = Path(os.path.expanduser("~/.claude/projects"))
+    best, best_mtime = "", -1.0
+    try:
+        for f in root.glob("*/*.jsonl"):
+            m = f.stat().st_mtime
+            if m > best_mtime:
+                best, best_mtime = str(f), m
+    except Exception as e:
+        log(f"newest_transcript failed: {e}")
+    return best
+
+
+def _speakable_from_record(rec: dict, narrate: bool) -> str:
+    """Extract something worth saying from one transcript record, or ""."""
+    if rec.get("type") != "assistant":
+        return ""
+    msg = rec.get("message", {})
+    content = msg.get("content", "")
+    text = _blocks_to_text(content)
+    if text.strip():
+        return text
+    if narrate and isinstance(content, list):
+        # Text-free turn = pure tool call. Optionally narrate it briefly.
+        tools = [b.get("name") for b in content
+                 if isinstance(b, dict) and b.get("type") == "tool_use"]
+        tools = [t for t in tools if t]
+        if tools:
+            return "Running " + ", ".join(tools) + "."
+    return ""
+
+
+def watch_transcript(path: str = "", narrate: bool = False,
+                     poll: float = 0.4) -> None:
+    """Tail a transcript and speak new assistant messages as they appear.
+
+    Starts at end-of-file so it never replays the backlog. This is what
+    makes voice work in an already-running session without a restart, since
+    it doesn't depend on hooks being reloaded.
+    """
+    path = path or newest_transcript()
+    if not path:
+        log("watch: no transcript found")
+        return
+    log(f"watch: started on {path}")
+    try:
+        f = open(path, "r", errors="ignore")
+    except Exception as e:
+        log(f"watch: open failed: {e}")
+        return
+    f.seek(0, os.SEEK_END)  # only new messages from here on
+    buf = ""
+    try:
+        while True:
+            if not is_enabled():
+                # Honor the master switch even while the daemon runs.
+                time.sleep(poll)
+                continue
+            chunk = f.readline()
+            if not chunk:
+                time.sleep(poll)
+                continue
+            buf += chunk
+            if not buf.endswith("\n"):
+                continue  # wait for the rest of a partial line
+            line, buf = buf.strip(), ""
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except Exception:
+                continue
+            say_text = _speakable_from_record(rec, narrate)
+            if say_text:
+                speak(say_text)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        f.close()
+
+
+def watcher_alive() -> bool:
+    try:
+        pid = int(WATCH_PID.read_text().strip())
+    except Exception:
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except Exception:
+        return False
 
 
 def read_hook_input() -> dict:
