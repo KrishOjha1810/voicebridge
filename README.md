@@ -9,6 +9,33 @@ Not a new sync layer. Remote Control already gives us the robust, free,
 disconnect-surviving pipe. voicebridge adds the two things it lacks: a
 **narrating two-way voice** and a **trustworthy review** on a small screen.
 
+## Install (fresh Mac)
+
+macOS only for now (uses `say`, `osascript`, and CoreAudio via sox).
+
+```bash
+git clone https://github.com/KrishOjha1810/voicebridge ~/voicebridge
+brew install whisper-cpp sox ffmpeg          # STT, mic capture, audio codecs
+curl -fSL -o ~/.voicebridge/models/ggml-small.en.bin --create-dirs \
+  https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin
+ln -s ~/voicebridge/bin/vb /opt/homebrew/bin/vb
+cp ~/voicebridge/commands/voice-on.md ~/voicebridge/commands/voice-off.md \
+  ~/.claude/commands/
+```
+
+Then register the hooks in `~/.claude/settings.json` (see `hooks/`: add
+`on_stop.py` to `Stop`, `on_notify.py` to `Notification`, `on_prompt.py` to
+`UserPromptSubmit`), and grant two one-time macOS permissions when prompted:
+**Microphone** and **Accessibility** for your terminal app (System Settings
+-> Privacy & Security). Without Accessibility, speech is transcribed but
+never typed into the session, that's the most common setup miss.
+
+Note: a few docs and example `.mcp.json` files contain absolute paths from
+the author's machine; adjust them to your own paths where noted.
+
+Quick check: `vb test` (should speak), then `/voice-on` inside any Claude
+Code session.
+
 ## Why this and not the others
 
 | Tool | Pipe | Voice | Gap we beat |

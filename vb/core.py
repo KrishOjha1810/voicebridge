@@ -115,15 +115,16 @@ _LIST_BULLET = re.compile(r"^\s*[-*]\s+", re.MULTILINE)
 _WS = re.compile(r"\s+")
 
 
-def clean_for_speech(text: str) -> str:
+def clean_for_speech(text: str, max_chars: int = 0) -> str:
     """Strip markdown/code so speech sounds natural, then cap length.
 
     We drop fenced code entirely (never read code aloud) and flatten the
     rest to plain sentences. Length is capped at a sentence boundary so we
-    never read a wall of text.
+    never read a wall of text. max_chars=0 uses the configured default.
     """
     if not text:
         return ""
+    cap = max_chars or MAX_CHARS
     t = _FENCE.sub(" (code block) ", text)
     t = _LINK.sub(r"\1", t)
     t = _URL.sub(" a link ", t)
@@ -131,12 +132,12 @@ def clean_for_speech(text: str) -> str:
     t = _LIST_BULLET.sub("", t)
     t = _MD_TOKENS.sub("", t)
     t = _WS.sub(" ", t).strip()
-    if len(t) <= MAX_CHARS:
+    if len(t) <= cap:
         return t
     # Cut at the last sentence end before the cap so it doesn't trail off.
-    cut = t[:MAX_CHARS]
+    cut = t[:cap]
     m = max(cut.rfind(". "), cut.rfind("! "), cut.rfind("? "))
-    if m > MAX_CHARS // 2:
+    if m > cap // 2:
         return cut[: m + 1]
     return cut.rstrip() + "..."
 
@@ -209,8 +210,11 @@ def _recently_spoken(cleaned: str) -> bool:
 
 def speak(text: str, blocking: bool = False) -> None:
     """Speak text. Non-blocking by default (hooks); blocking for converse mode
-    so we finish talking before we listen again. New speech cuts off old."""
-    text = clean_for_speech(text)
+    so we finish talking before we listen again. New speech cuts off old.
+
+    Blocking speech (a live conversation reply) reads the WHOLE reply, not a
+    capped preview: cutting off mid-answer breaks the conversation."""
+    text = clean_for_speech(text, max_chars=6000 if blocking else 0)
     if not text:
         return
     if _recently_spoken(text):
