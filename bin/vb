@@ -8,6 +8,9 @@ Usage:
   vb test                    speak a short test line
   vb say TEXT                speak arbitrary text now
   vb log                     show the debug log
+  vb lang [NAME]             set response language + voice (e.g. english,
+                             hinglish, hindi, or anything). No arg shows it;
+                             "off" clears it.
   vb stt                     show speech-to-text readiness
   vb listen [--send] [--delay=N]
                              record you, transcribe locally (whisper.cpp),
@@ -118,6 +121,41 @@ def main(argv) -> int:
     elif cmd == "log":
         print(core.LOG_FILE.read_text() if core.LOG_FILE.exists()
               else "(no log yet)")
+
+    elif cmd == "lang":
+        if not rest:
+            cur = core.get_lang()
+            print(f"language: {cur or '(default English)'}")
+            print(f"voice   : {core.voice_for_lang(cur) or '(system default)'}")
+            print("set with: vb lang <english|hinglish|hindi|anything>")
+            print("clear   : vb lang off")
+            return 0
+        name = " ".join(rest).strip()
+        core.STATE_DIR.mkdir(parents=True, exist_ok=True)
+        if name.lower() in ("off", "none", "default", "clear"):
+            try:
+                core.LANG_FILE.unlink()
+            except FileNotFoundError:
+                pass
+            print("language: (default English)")
+            core.speak("Okay, back to default English.")
+            return 0
+        core.LANG_FILE.write_text(name + "\n")
+        print(f"language: {name}")
+        print(f"voice   : {core.voice_for_lang(name) or '(system default)'}")
+        low = name.lower()
+        if "hinglish" in low:
+            core.speak("Done, ab main Hinglish mein baat karunga.")
+        elif low in ("hindi", "हिंदी"):
+            core.speak("ठीक है, अब "
+                       "मैं हिंदी "
+                       "में बात "
+                       "करूँगा।")
+        else:
+            core.speak(f"Okay, I'll respond in {name}.")
+        print("note: response-language takes effect in your NEXT Claude Code "
+              "session (hook loads at startup); this session, just ask me to "
+              "switch. The voice switches immediately.")
 
     elif cmd == "stt":
         from vb import stt

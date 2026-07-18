@@ -65,6 +65,26 @@ bin/vb log              debug log
 `vb on` targets your most recently active session automatically. Optional:
 add `~/voicebridge/bin` to your PATH to just type `vb`.
 
+### Language & conversation tone
+
+Make the agent talk to you in your language, with a spoken back-and-forth
+feel:
+
+```
+vb lang hinglish   # or: english, hindi, or anything you name
+vb lang            # show current language + voice
+vb lang off        # back to default English
+```
+
+This does two things: sets the macOS voice (Hinglish -> Indian-accent
+`Rishi`, Hindi -> Devanagari `Lekha`, others -> default), and, via a
+UserPromptSubmit hook, tells Claude to reply in that language in a warm,
+concise, spoken conversational tone (ending with a natural follow-up when it
+fits). It's a prose style note only; it won't change code or commands.
+
+The voice switches immediately; the response-language directive loads at the
+start of your next Claude Code session (or just ask Claude to switch now).
+
 ### Talk back (input) - Milestone 2: local voice IN
 
 Two ways to talk to Claude:

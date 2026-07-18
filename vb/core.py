@@ -22,6 +22,15 @@ ENABLED_FLAG = STATE_DIR / "enabled"
 LOG_FILE = STATE_DIR / "log"
 LAST_SPOKEN = STATE_DIR / "last_spoken"
 WATCH_PID = STATE_DIR / "watch.pid"
+LANG_FILE = STATE_DIR / "lang"
+
+# Map a chosen language to the best-fitting macOS `say` voice. Latin-script
+# languages (incl. Hinglish) sound best with the Indian-accent English voice;
+# Devanagari Hindi needs the Hindi voice. Anything else falls back to default.
+VOICE_MAP = {
+    "hindi": "Lekha",     # hi_IN, reads Devanagari
+    "hinglish": "Rishi",  # en_IN, natural for romanized Hindi + English
+}
 
 # Don't speak the same text twice within this window. This is what lets the
 # transcript watcher and the Stop hook coexist without double-speaking.
@@ -35,6 +44,19 @@ MAX_CHARS = int(os.environ.get("VOICEBRIDGE_MAXCHARS", "700"))
 
 def is_enabled() -> bool:
     return ENABLED_FLAG.exists()
+
+
+def get_lang() -> str:
+    """The chosen response language (free-form), or '' for default English."""
+    try:
+        return LANG_FILE.read_text().strip()
+    except Exception:
+        return ""
+
+
+def voice_for_lang(lang: str) -> str:
+    """Pick a say voice for a language; '' means system default."""
+    return VOICE_MAP.get(lang.strip().lower(), "")
 
 
 def log(msg: str) -> None:
@@ -160,9 +182,11 @@ def speak(text: str) -> None:
         subprocess.run(["pkill", "-x", "say"], capture_output=True)
     except Exception:
         pass
+    # Env override wins; otherwise pick a voice for the chosen language.
+    voice = VOICE or voice_for_lang(get_lang())
     cmd = ["say", "-r", RATE]
-    if VOICE:
-        cmd += ["-v", VOICE]
+    if voice:
+        cmd += ["-v", voice]
     cmd.append(text)
     try:
         subprocess.Popen(
