@@ -1,5 +1,14 @@
 # Vapi relay - true phone call to your live session
 
+> **Use `vb call` (recommended).** The Python relay built into voicebridge
+> (`vb call on`) is channels-free, it injects into your open session
+> locally, so it works on org accounts where Claude Channels is blocked.
+> Steps: 1) `vb call on` (set `VB_CALL_SECRET` first), 2) `ngrok http 8790`,
+> 3) Vapi assistant -> Model: Custom LLM -> URL
+> `https://<tunnel>/chat/completions`, secret in the `x-vapi-secret` header,
+> 4) attach a number and call. Keep the Mac awake with the session focused.
+> The Bun relay below is the older Channels-based variant.
+
 Dial a number, talk in real time, and Vapi's speech reaches the Claude Code
 session running on your Mac; Claude's reply is spoken back on the call.
 

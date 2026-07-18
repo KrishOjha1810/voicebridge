@@ -8,6 +8,9 @@ Usage:
   vb test                    speak a short test line
   vb say TEXT                speak arbitrary text now
   vb log                     show the debug log
+  vb call on|off|status      TRUE hands-free mobile: a real phone call with
+                             your live session via Vapi (no taps; needs a
+                             Vapi account + tunnel; channels-free relay).
   vb remote on|off|status    phone bridge (Telegram, no Channels needed):
                              text/voice-note your bot from anywhere; it types
                              into your open session and replies with text +
@@ -143,6 +146,21 @@ def main(argv) -> int:
     elif cmd == "log":
         print(core.LOG_FILE.read_text() if core.LOG_FILE.exists()
               else "(no log yet)")
+
+    elif cmd == "call":
+        from vb import call
+        sub = rest[0] if rest else "status"
+        if sub == "on":
+            print(call.on())
+        elif sub == "off":
+            print(call.off())
+        elif sub == "status":
+            print(call.status())
+        elif sub == "__run__":
+            return call.run_daemon()
+        else:
+            print("usage: vb call on|off|status")
+            return 1
 
     elif cmd == "remote":
         from vb import remote
