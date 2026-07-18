@@ -65,11 +65,38 @@ bin/vb log              debug log
 `vb on` targets your most recently active session automatically. Optional:
 add `~/voicebridge/bin` to your PATH to just type `vb`.
 
-### Talk back (input)
+### Talk back (input) - Milestone 2: local voice IN
 
-Voice input already works through Claude Code's native `/voice` (hold
-spacebar and speak). Combined with `vb on`, that's a full voice loop today.
-Private local dictation (whisper.cpp) for hands-free automation is M2.
+Two ways to talk to Claude:
+
+1. **Native `/voice`** (zero setup): hold spacebar in the TUI and speak.
+   Best when your hands are already on the keyboard.
+2. **`vb listen`** (voicebridge, fully local via whisper.cpp): press to
+   talk, it transcribes on-device and pastes your words into the focused
+   Claude window. Nothing leaves the machine.
+
+```
+vb stt                    # check STT readiness (binary + model)
+vb listen                 # hush Claude, record, transcribe, paste
+vb listen --send          # also press Return to send immediately
+vb listen --delay=2       # wait 2s so you can focus the Claude window
+```
+
+**Barge-in:** `vb listen` runs `pkill say` the instant it starts, so
+choosing to talk immediately hushes Claude. That's the interrupt feel.
+(Interrupting Claude's actual generation mid-thought is still the CLI's
+own Esc; an external voice layer can't reach into that cleanly.)
+
+**Seamless use:** bind `vb listen --send` to a global hotkey (macOS
+Shortcuts, Raycast, or skhd) so you never leave the Claude window. See
+[SETUP.md](SETUP.md).
+
+**Recommended:** headphones. On speakers, the mic hears Claude's own
+voice, which causes false triggers and echo. This is why always-on
+listening (VAD) is a stretch goal, not the default.
+
+First run prompts for two macOS permissions: **Microphone** (for `rec`)
+and **Accessibility** (for the paste keystroke). See [SETUP.md](SETUP.md).
 
 ### Config (env vars)
 

@@ -20,24 +20,25 @@ Claude speaks. The "I finally know what it's doing" half.
 - [ ] smarter narration via `PreToolUse`: name the file being edited,
       throttle so it doesn't chatter; summarize, don't read every call
 
-## M2 - Voice IN (local, private)
+## M2 - Voice IN (local, private) - DONE
 
 You talk back, hands-free, for direction and approval only.
 
-- [ ] install whisper.cpp (local, offline STT) + tiny/base model
-- [ ] push-to-talk capture script -> transcript
-- [ ] review-before-send: show transcript, confirm, then inject
-- [ ] delivery into the live session. Two candidate paths:
-  - Remote Control: send as a normal message from the paired device
-  - Local: a small stdin bridge / `channels` plugin (Telegram) as relay
-- [ ] rule: never dictate code/paths/regex; intent + approvals only
+- [x] install whisper.cpp (local, offline STT) + base.en model
+- [x] press-to-talk capture (sox `rec`, silence auto-stop)
+- [x] local transcription (`vb/stt.py`), verified end to end
+- [x] delivery into the focused session via clipboard paste (`vb/inject.py`)
+- [x] `vb listen [--send] [--delay=N]` + `vb stt` readiness
+- [x] rule enforced by habit + docs: dictate intent, not code/paths
+- [ ] optional review-before-send UI (currently: not auto-sent unless
+      `--send`, so you can eyeball and press Enter)
 
 ## M3 - Barge-in
 
 Interrupt like a real conversation.
 
-- [ ] push-to-interrupt (hold key / tap) -> `pkill say` + start listening
-- [ ] later: VAD full-duplex (hard; watch self-cutoff on interrupt)
+- [x] press-to-interrupt: `vb listen` hushes `say` the moment you talk
+- [ ] VAD full-duplex (hard; echo/self-cutoff; needs headphones or AEC)
 - [ ] target: sub-800ms turn feel; measure and log latency
 
 ## M4 - Decision-moment voice (the trust win)

@@ -1,0 +1,97 @@
+"""voicebridge STT: local, private speech-to-text via whisper.cpp.
+
+Nothing about your code leaves the machine. Recording uses sox (`rec`)
+with silence auto-stop, so you press to talk, speak, and it ends itself.
+"""
+
+import os
+import shutil
+import subprocess
+from pathlib import Path
+
+from . import core
+
+MODEL_DIR = core.STATE_DIR / "models"
+MODEL = MODEL_DIR / "ggml-base.en.bin"
+MODEL_URL = (
+    "https://huggingface.co/ggerganov/whisper.cpp/"
+    "resolve/main/ggml-base.en.bin"
+)
+
+
+def whisper_bin() -> str:
+    for name in ("whisper-cli", "whisper-cpp", "main"):
+        p = shutil.which(name)
+        if p:
+            return p
+    return ""
+
+
+def have_deps() -> dict:
+    return {
+        "whisper": whisper_bin(),
+        "rec": shutil.which("rec") or "",
+        "model": str(MODEL) if MODEL.exists() else "",
+    }
+
+
+def ensure_model() -> bool:
+    if MODEL.exists():
+        return True
+    MODEL_DIR.mkdir(parents=True, exist_ok=True)
+    core.log(f"downloading model to {MODEL}")
+    try:
+        subprocess.run(
+            ["curl", "-fSL", "-o", str(MODEL), MODEL_URL],
+            check=True,
+        )
+        return MODEL.exists()
+    except Exception as e:
+        core.log(f"model download failed: {e}")
+        return False
+
+
+def record(wav: str, max_secs: int = 30,
+           silence_stop: float = 2.0) -> bool:
+    """Record mic to a 16kHz mono wav, stopping after silence.
+
+    Waits for you to start speaking, then ends after `silence_stop`
+    seconds of quiet. Whisper wants 16kHz mono, so we record that directly.
+    """
+    rec = shutil.which("rec")
+    if not rec:
+        core.log("record: sox `rec` not found")
+        return False
+    cmd = [
+        rec, "-q", "-c", "1", "-r", "16000", "-b", "16", wav,
+        "trim", "0", str(max_secs),
+        "silence", "1", "0.1", "3%", "1", str(silence_stop), "3%",
+    ]
+    try:
+        subprocess.run(cmd, check=True,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return os.path.exists(wav) and os.path.getsize(wav) > 1000
+    except Exception as e:
+        core.log(f"record failed: {e}")
+        return False
+
+
+def transcribe(wav: str) -> str:
+    """Run whisper.cpp on a wav and return cleaned text."""
+    wb = whisper_bin()
+    if not wb or not MODEL.exists():
+        core.log("transcribe: missing whisper binary or model")
+        return ""
+    cmd = [wb, "-m", str(MODEL), "-f", wav, "-nt", "-np", "-l", "en"]
+    try:
+        out = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+    except Exception as e:
+        core.log(f"transcribe failed: {e}")
+        return ""
+    text = (out.stdout or "").strip()
+    # whisper.cpp sometimes emits bracketed non-speech tags; drop them.
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    cleaned = " ".join(lines)
+    for tag in ("[BLANK_AUDIO]", "(blank audio)", "[ Silence ]", "[silence]"):
+        cleaned = cleaned.replace(tag, "")
+    return cleaned.strip()

@@ -8,6 +8,12 @@ Usage:
   vb test                    speak a short test line
   vb say TEXT                speak arbitrary text now
   vb log                     show the debug log
+  vb stt                     show speech-to-text readiness
+  vb listen [--send] [--delay=N]
+                             record you, transcribe locally (whisper.cpp),
+                             and paste into the focused window. --send also
+                             presses Return. --delay=N waits N seconds first
+                             so you can focus the Claude window.
 
 PATH defaults to the most recently modified Claude Code transcript, which
 is your current live session. --narrate also speaks tool-only turns
@@ -22,6 +28,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from vb import core  # noqa: E402
 
 SELF = str(Path(__file__).resolve())
+
+
+def _int_flag(rest, name, default):
+    for a in rest:
+        if a.startswith(name + "="):
+            try:
+                return int(a.split("=", 1)[1])
+            except ValueError:
+                return default
+    return default
 
 
 def start_watcher(path: str, narrate: bool) -> str:
@@ -102,6 +118,41 @@ def main(argv) -> int:
     elif cmd == "log":
         print(core.LOG_FILE.read_text() if core.LOG_FILE.exists()
               else "(no log yet)")
+
+    elif cmd == "stt":
+        from vb import stt
+        deps = stt.have_deps()
+        ok = all(deps.values())
+        for k, v in deps.items():
+            print(f"{k:8}: {v or 'MISSING'}")
+        print("ready   :", ok)
+
+    elif cmd == "listen":
+        from vb import stt, inject
+        send = "--send" in rest
+        delay = _int_flag(rest, "--delay", 0)
+        if not stt.whisper_bin() or not stt.MODEL.exists():
+            print("STT not ready. Run: vb stt   (model may still be "
+                  "downloading)")
+            return 1
+        # Barge-in: hush Claude the instant you choose to talk.
+        subprocess.run(["pkill", "-x", "say"], capture_output=True)
+        if delay:
+            print(f"focus your target window... {delay}s")
+            import time
+            time.sleep(delay)
+        wav = str(core.STATE_DIR / "rec.wav")
+        print("listening (speak, then pause to end)...")
+        if not stt.record(wav):
+            print("recording failed (mic permission? sox installed?)")
+            return 1
+        print("transcribing...")
+        text = stt.transcribe(wav)
+        if not text:
+            print("(heard nothing)")
+            return 0
+        print(f"you said: {text}")
+        inject.paste_text(text, send=send)
 
     elif cmd == "__watch__":
         # Internal: the daemon entrypoint launched by `vb on`.

@@ -1,0 +1,53 @@
+"""voicebridge injection: put transcribed text into the focused app.
+
+Uses a clipboard paste (Cmd+V) rather than simulated typing: pasting is
+far more reliable for long text and doesn't drop characters. The previous
+clipboard contents are saved and restored so we don't clobber them.
+
+Requires macOS Accessibility permission for whatever runs this (your
+terminal / Claude Code) the first time. macOS will prompt.
+"""
+
+import subprocess
+import time
+
+from . import core
+
+
+def _pbpaste() -> str:
+    try:
+        return subprocess.run(["pbpaste"], capture_output=True,
+                              text=True).stdout
+    except Exception:
+        return ""
+
+
+def _pbcopy(text: str) -> None:
+    try:
+        subprocess.run(["pbcopy"], input=text, text=True)
+    except Exception as e:
+        core.log(f"pbcopy failed: {e}")
+
+
+def _osa(script: str) -> None:
+    try:
+        subprocess.run(["osascript", "-e", script],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception as e:
+        core.log(f"osascript failed: {e}")
+
+
+def paste_text(text: str, send: bool = False) -> None:
+    """Paste text into the focused app; optionally press Return to send."""
+    if not text:
+        return
+    saved = _pbpaste()
+    _pbcopy(text)
+    time.sleep(0.05)
+    _osa('tell application "System Events" to keystroke "v" using command down')
+    time.sleep(0.15)
+    if send:
+        _osa('tell application "System Events" to key code 36')  # Return
+    # Restore the old clipboard after the paste has landed.
+    time.sleep(0.2)
+    _pbcopy(saved)
