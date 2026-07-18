@@ -65,10 +65,32 @@ bin/vb log              debug log
 `vb on` targets your most recently active session automatically. Optional:
 add `~/voicebridge/bin` to your PATH to just type `vb`.
 
-### Agent mode - voice INSIDE your live session (`vb session`)
+### Agent mode, channel-free (`vb talk`) - works on ANY account
 
-The flagship. One command starts a real Claude Code session with your mic
-wired into it:
+The mode to use when your org blocks Channels (Team/Enterprise accounts do
+by default). You keep a normal `claude` session open in its own window;
+`vb talk` runs beside it:
+
+```
+claude                 # window 1: your normal session
+vb talk                # window 2: the voice link
+```
+
+Keep the Claude window focused and just talk: your speech is transcribed
+locally and typed into the session; new replies are spoken aloud. If a
+reply lands while you're silent, the wait is cut short and it's spoken
+right away. Say **"stop listening"** to end. Fire-and-forget injection:
+nothing can hang, and "stop" always works.
+
+Tradeoff vs the channel mode: the Claude window must stay focused (the
+paste lands at your cursor), and it binds to your most recently active
+session (it re-binds after your first spoken message to be sure).
+
+### Agent mode via Channels (`vb session`) - needs Channels enabled
+
+The cleaner architecture when your account allows it (Pro/Max, or an org
+Owner enabled Channels). One command starts a real Claude Code session with
+your mic wired into it:
 
 ```
 cd ~/my/project

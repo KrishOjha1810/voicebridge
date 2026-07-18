@@ -108,6 +108,31 @@ def record(wav: str, max_secs: int = 30,
         return False
 
 
+def record_start(wav: str, max_secs: int = 30,
+                 silence_stop: float = 2.0):
+    """Start a recording as a Popen (same gating as record()); None on fail.
+
+    Lets the caller poll/terminate mid-recording, which vb talk uses to cut
+    a silent wait short when Claude's reply lands.
+    """
+    rec = _find("rec")
+    if not rec:
+        core.log("record_start: sox `rec` not found")
+        return None
+    cmd = [
+        rec, "-q", "-c", "1", "-r", "16000", "-b", "16", wav,
+        "trim", "0", str(max_secs),
+        "silence", "1", "0.05", "0.3%", "1", str(silence_stop), "1.5%",
+        "norm", "-1",
+    ]
+    try:
+        return subprocess.Popen(cmd, stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL)
+    except Exception as e:
+        core.log(f"record_start failed: {e}")
+        return None
+
+
 def transcribe(wav: str) -> str:
     """Run whisper.cpp on a wav and return cleaned text."""
     wb = whisper_bin()

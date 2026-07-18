@@ -8,10 +8,12 @@ Usage:
   vb test                    speak a short test line
   vb say TEXT                speak arbitrary text now
   vb log                     show the debug log
-  vb session [DIR]           THE agent mode: start a Claude Code session with
-                             the voicemode channel + mic on. Talk hands-free
-                             inside the real session (your files, your
-                             context). Say "stop listening" to mute.
+  vb talk                    voice link to your OPEN Claude session: talk
+                             hands-free, replies spoken. Channel-free (works
+                             when your org blocks Channels). Keep the Claude
+                             window focused. "stop listening" ends.
+  vb session [DIR]           agent mode via the voicemode channel (needs
+                             Channels enabled for your account/org).
   vb mic on|off              toggle the in-session mic (voicemode channel)
   vb converse [DIR]          lighter side-chat: talk to a headless Claude in
                              DIR (or cwd). No session UI. "stop" ends.
@@ -132,6 +134,11 @@ def main(argv) -> int:
     elif cmd == "log":
         print(core.LOG_FILE.read_text() if core.LOG_FILE.exists()
               else "(no log yet)")
+
+    elif cmd == "talk":
+        from vb import talk
+        pos = [a for a in rest if not a.startswith("--")]
+        return talk.run(pos[0] if pos else "")
 
     elif cmd == "session":
         import os
