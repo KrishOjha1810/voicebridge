@@ -115,6 +115,11 @@ def _sse(text: str) -> bytes:
 PAGE = """<!DOCTYPE html>
 <html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/icon.svg">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0e1116">
 <title>voicebridge call</title>
 <style>
  body{font-family:-apple-system,system-ui,sans-serif;background:#0e1116;color:#e6e9ef;
@@ -240,6 +245,26 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.split("?")[0]
         if path == "/health":
             self._reply(200, b"ok", "text/plain")
+        elif path == "/manifest.json":   # PWA install (public, harmless)
+            self._reply(200, json.dumps({
+                "name": "voicebridge",
+                "short_name": "voicebridge",
+                "start_url": "/",
+                "display": "standalone",
+                "background_color": "#0e1116",
+                "theme_color": "#0e1116",
+                "icons": [{"src": "/icon.svg", "sizes": "any",
+                           "type": "image/svg+xml"}],
+            }).encode(), "application/json")
+        elif path == "/icon.svg":
+            self._reply(200, (
+                '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">'
+                '<rect width="100" height="100" rx="22" fill="#2f6df6"/>'
+                '<rect x="42" y="18" width="16" height="40" rx="8" fill="#fff"/>'
+                '<path d="M30 52a20 20 0 0 0 40 0" stroke="#fff" stroke-width="7"'
+                ' fill="none" stroke-linecap="round"/>'
+                '<rect x="47" y="72" width="6" height="12" fill="#fff"/>'
+                '</svg>').encode(), "image/svg+xml")
         elif path == "/":
             if not self._authed():
                 self._reply(401, b"add ?k=<secret> to the URL", "text/plain")

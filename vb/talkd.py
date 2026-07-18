@@ -267,6 +267,62 @@ def _is_echo(text: str, window_s: float = 45.0) -> bool:
     return overlap >= 0.6
 
 
+def _speak_interruptible(text: str) -> str:
+    """Speak a reply, but listen WHILE speaking: if the user talks over it
+    out loud, cut the speech and return their words as the next prompt.
+
+    The mic hears our own TTS on speakers, so a capture only counts as a
+    barge-in if it survives the echo guard (their words, not ours). Returns
+    "" when the reply played out uninterrupted."""
+    t = core.clean_for_speech(text, max_chars=6000)
+    if not t or core._recently_spoken(t):
+        return ""
+    try:
+        (core.STATE_DIR / "last_spoken_text").write_text(
+            json.dumps({"text": t, "ts": time.time()}))
+    except Exception:
+        pass
+    voice = core.get_voice()
+    cmd = ["say", "-r", core.get_rate()]
+    if voice:
+        cmd += ["-v", voice]
+    cmd.append(t)
+    say = subprocess.Popen(cmd, stdout=subprocess.DEVNULL,
+                           stderr=subprocess.DEVNULL)
+    wav = str(STATE / "barge.wav")
+    try:
+        while say.poll() is None:
+            try:
+                os.remove(wav)
+            except FileNotFoundError:
+                pass
+            rec = stt.record_start(wav, max_secs=20, silence_stop=1.2)
+            if rec is None:
+                say.wait()
+                break
+            while rec.poll() is None and say.poll() is None:
+                time.sleep(0.2)
+            if rec.poll() is None:      # speech finished first
+                rec.terminate()
+                rec.wait()
+                break
+            try:
+                if os.path.getsize(wav) < 4000:
+                    continue
+            except OSError:
+                continue
+            heard = stt.transcribe(wav)
+            if not heard or is_noise(heard) or _is_echo(heard, 90):
+                continue                # our own voice or noise; keep talking
+            subprocess.run(["pkill", "-x", "say"], capture_output=True)
+            say.wait()
+            core.log(f"talkd barge-in: {heard[:80]}")
+            return heard
+    except Exception as e:
+        core.log(f"speak_interruptible: {e}")
+    return ""
+
+
 def _any_speech_playing() -> bool:
     """True while ANY `say` is talking (ours, a hook's, a stale watcher's)."""
     return subprocess.run(["pgrep", "-x", "say"],
@@ -286,6 +342,7 @@ def run_daemon() -> int:
     prev: dict = {}
     announced: set = set()
     follow_until = 0.0   # wake mode: window after "hey Claude" alone
+    queued = ""          # barge-in captured while a reply was speaking
     while True:
         active = _read_json(ACTIVE)
         if not active or not (VOICED / active["session_id"]).exists():
@@ -298,64 +355,71 @@ def run_daemon() -> int:
             prev[tp] = core.last_assistant_text(tp)
             announced.add(sid)
 
-        # 1) Speak any new reply in the active session.
+        # 1) Speak any new reply, listening for a barge-in while talking.
         cur = core.last_assistant_text(tp)
         if cur and cur != prev.get(tp):
             prev[tp] = cur
-            core.speak(cur, blocking=True)
-            time.sleep(0.4)
-            continue
+            barge = _speak_interruptible(cur)
+            if barge:
+                queued = barge   # user talked over the reply; that's the prompt
+            time.sleep(0.3)
+            if not barge:
+                continue
 
-        # 2) Listen; abandon the wait early if a reply lands or focus moves.
+        # 2) Listen (or use a barge-in already captured during speech).
         mode = get_mode()
         pause = get_pause()
         in_follow = time.time() < follow_until
-        _wait_for_silence()   # never record while ANY speech is playing
-        if mode == "all" or in_follow:
-            _beep(START_TINK)   # wake mode listens silently (ambient)
-            time.sleep(0.35)
-        try:
-            os.remove(wav)
-        except FileNotFoundError:
-            pass
-        p = stt.record_start(wav, silence_stop=pause)
-        if p is None:
-            time.sleep(1)
-            continue
-        cut = False
-        while p.poll() is None:
-            time.sleep(0.3)
-            now_active = _read_json(ACTIVE)
-            switched = (not now_active
-                        or now_active.get("session_id") != sid)
-            newreply = core.last_assistant_text(tp) != prev.get(tp)
-            if switched or newreply:
-                try:
-                    size = os.path.getsize(wav)
-                except OSError:
-                    size = 0
-                if size < 5000:
-                    p.terminate()
-                    p.wait()
-                    cut = True
-                    break
-        if mode == "all" or in_follow:
-            _beep(STOP_POP)
-        if cut:
-            continue
-
-        # 3) Handle speech.
-        try:
-            if os.path.getsize(wav) < 2000:
+        if queued:
+            text = queued
+            queued = ""
+        else:
+            _wait_for_silence()   # never record while ANY speech is playing
+            if mode == "all" or in_follow:
+                _beep(START_TINK)   # wake mode listens silently (ambient)
+                time.sleep(0.35)
+            try:
+                os.remove(wav)
+            except FileNotFoundError:
+                pass
+            p = stt.record_start(wav, silence_stop=pause)
+            if p is None:
+                time.sleep(1)
                 continue
-        except OSError:
-            continue
-        text = stt.transcribe(wav)
-        if not text or is_noise(text):
-            continue
-        if _is_echo(text):
-            core.log(f"talkd echo dropped: {text[:80]}")
-            continue
+            cut = False
+            while p.poll() is None:
+                time.sleep(0.3)
+                now_active = _read_json(ACTIVE)
+                switched = (not now_active
+                            or now_active.get("session_id") != sid)
+                newreply = core.last_assistant_text(tp) != prev.get(tp)
+                if switched or newreply:
+                    try:
+                        size = os.path.getsize(wav)
+                    except OSError:
+                        size = 0
+                    if size < 5000:
+                        p.terminate()
+                        p.wait()
+                        cut = True
+                        break
+            if mode == "all" or in_follow:
+                _beep(STOP_POP)
+            if cut:
+                continue
+
+            # 3) Handle speech.
+            try:
+                if os.path.getsize(wav) < 2000:
+                    continue
+            except OSError:
+                continue
+            text = stt.transcribe(wav)
+            if not text or is_noise(text):
+                continue
+            if _is_echo(text):
+                core.log(f"talkd echo dropped: {text[:80]}")
+                continue
 
         # Mode switching by voice, from either mode.
         if TO_WAKE_RE.match(text):
