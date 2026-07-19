@@ -87,13 +87,22 @@ def _send_voice(chat_id: str, text: str) -> None:
         spoken = core.clean_for_speech(text, max_chars=3000)
         if not spoken:
             return
-        voice = core.get_voice()
-        cmd = ["/usr/bin/say", "-r", core.get_rate(), "-o", aiff]
-        if voice:
-            cmd += ["-v", voice]
-        cmd.append(spoken)
-        subprocess.run(cmd, timeout=240, check=True)
-        subprocess.run([FFMPEG, "-y", "-i", aiff, "-c:a", "libopus",
+        # Same voice as the desk: prefer Kokoro; fall back to say.
+        src = ""
+        if core.get_engine() == "kokoro" and core.ensure_kokoro_server():
+            wav = str(TMP / "reply-k.wav")
+            src = core._kokoro_wav(spoken, out=wav)
+        if not src:
+            voice = core.get_voice()
+            if not voice or core._KOKORO_VOICE_RE.match(voice):
+                voice = ""
+            cmd = ["/usr/bin/say", "-r", core.get_rate(), "-o", aiff]
+            if voice:
+                cmd += ["-v", voice]
+            cmd.append(spoken)
+            subprocess.run(cmd, timeout=240, check=True)
+            src = aiff
+        subprocess.run([FFMPEG, "-y", "-i", src, "-c:a", "libopus",
                         "-b:a", "32k", ogg],
                        capture_output=True, timeout=120, check=True)
         subprocess.run(

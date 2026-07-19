@@ -366,20 +366,35 @@ def _stitch_more(wav: str, pause: float, so_far: str = "") -> str:
 _WORD_RE = re.compile(r"[a-z0-9']+")
 
 
-def _is_echo(text: str, window_s: float = 45.0) -> bool:
-    """True if `text` is (mostly) the system's own recent speech.
-
-    Guards against the mic hearing our own TTS through speakers: if most of
-    the captured words appear in what we spoke in the last `window_s`
-    seconds, it's an echo, drop it instead of injecting it."""
+def _spoken_words(window_s: float) -> set:
+    """Every word we've spoken recently (rolling history, not just the last
+    utterance, older speech can still be echoing when new speech starts)."""
+    words: set = set()
+    now = time.time()
     try:
-        rec = json.loads(
-            (core.STATE_DIR / "last_spoken_text").read_text())
-        if time.time() - float(rec.get("ts", 0)) > window_s:
-            return False
-        spoken = set(_WORD_RE.findall(rec.get("text", "").lower()))
-    except Exception:
-        return False
+        for ln in (core.STATE_DIR / "spoken_history").read_text().splitlines():
+            try:
+                rec = json.loads(ln)
+                if now - float(rec.get("ts", 0)) <= window_s:
+                    words |= set(_WORD_RE.findall(rec.get("text", "").lower()))
+            except Exception:
+                pass
+    except FileNotFoundError:
+        pass
+    if not words:   # fallback: the single last utterance
+        try:
+            rec = json.loads(
+                (core.STATE_DIR / "last_spoken_text").read_text())
+            if now - float(rec.get("ts", 0)) <= window_s:
+                words = set(_WORD_RE.findall(rec.get("text", "").lower()))
+        except Exception:
+            pass
+    return words
+
+
+def _is_echo(text: str, window_s: float = 90.0) -> bool:
+    """True if `text` is (mostly) the system's own recent speech."""
+    spoken = _spoken_words(window_s)
     heard = _WORD_RE.findall(text.lower())
     if len(heard) < 3 or not spoken:
         return False
@@ -402,13 +417,8 @@ def echo_residue(text: str, window_s: float = 90.0) -> "tuple[str, float]":
     heard = _WORD_RE.findall(text.lower())
     if not heard:
         return "", 1.0
-    try:
-        rec = json.loads(
-            (core.STATE_DIR / "last_spoken_text").read_text())
-        if time.time() - float(rec.get("ts", 0)) > window_s:
-            return text, 0.0
-        spoken = set(_WORD_RE.findall(rec.get("text", "").lower()))
-    except Exception:
+    spoken = _spoken_words(window_s)
+    if not spoken:
         return text, 0.0
     residue = [w for w in heard if w not in spoken]
     overlap = 1.0 - len(residue) / len(heard)

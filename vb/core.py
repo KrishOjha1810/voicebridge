@@ -282,6 +282,45 @@ def hush() -> None:
         pass
 
 
+def kokoro_up() -> bool:
+    try:
+        r = subprocess.run(
+            ["curl", "-s", "-m", "2",
+             f"http://127.0.0.1:{KOKORO_PORT}/health"],
+            capture_output=True, timeout=5)
+        return r.stdout == b"ok"
+    except Exception:
+        return False
+
+
+def ensure_kokoro_server(wait_s: float = 10.0) -> bool:
+    """Start the Kokoro server if it isn't running; wait for readiness.
+    Keeps the voice consistent instead of silently falling back to say."""
+    if kokoro_up():
+        return True
+    venv_py = STATE_DIR / "kokoro-venv" / "bin" / "python"
+    server = Path(__file__).resolve().parent.parent / "scripts" / \
+        "kokoro_server.py"
+    if not venv_py.exists() or not server.exists():
+        return False
+    try:
+        p = subprocess.Popen([str(venv_py), str(server)],
+                             stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL,
+                             start_new_session=True)
+        (STATE_DIR / "tts.pid").write_text(str(p.pid))
+    except Exception as e:
+        log(f"kokoro autostart failed: {e}")
+        return False
+    t0 = time.time()
+    while time.time() - t0 < wait_s:
+        if kokoro_up():
+            log("kokoro server autostarted")
+            return True
+        time.sleep(0.5)
+    return False
+
+
 def speak_chunks_blocking(text: str) -> None:
     """The chunked-speech worker (runs inside `vb __speak__`).
 
@@ -295,10 +334,16 @@ def speak_chunks_blocking(text: str) -> None:
     is_hindi_text = bool(re.search(r"[ऀ-ॿ]", text))
     kokoro_ok = (get_engine() == "kokoro" and not is_hindi_text
                  and lang not in ("hindi", "हिंदी"))
+    if kokoro_ok and not ensure_kokoro_server():
+        log("speak fell back to say: kokoro server unavailable")
+        kokoro_ok = False
     if kokoro_ok:
         chunks = split_speech_chunks(text)
         slots = [str(STATE_DIR / f"speech-{i}.wav") for i in (0, 1)]
-        cur = _kokoro_wav(chunks[0], out=slots[0])
+        cur = _kokoro_wav(chunks[0], out=slots[0]) \
+            or _kokoro_wav(chunks[0], out=slots[0])   # one retry
+        if not cur:
+            log("speak fell back to say: chunk synth failed")
         if cur:
             i = 0
             while i < len(chunks):
@@ -337,6 +382,23 @@ def start_speech(text: str):
         STATE_DIR.mkdir(parents=True, exist_ok=True)
         (STATE_DIR / "last_spoken_text").write_text(
             json.dumps({"text": text, "ts": time.time()}))
+        # Rolling history: echoes of OLDER speech can still be in the air
+        # when a newer speak overwrites last_spoken_text, so echo checks
+        # must remember everything recent, not just the latest utterance.
+        hist = STATE_DIR / "spoken_history"
+        now = time.time()
+        lines = []
+        try:
+            for ln in hist.read_text().splitlines():
+                try:
+                    if now - json.loads(ln)["ts"] < 180:
+                        lines.append(ln)
+                except Exception:
+                    pass
+        except FileNotFoundError:
+            pass
+        lines.append(json.dumps({"text": text, "ts": now}))
+        hist.write_text("\n".join(lines[-20:]) + "\n")
         (STATE_DIR / "speech.txt").write_text(text)
     except Exception:
         return None
