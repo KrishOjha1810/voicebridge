@@ -238,6 +238,23 @@ vb test                 # hear it
 `vb engine say` switches back; if the Kokoro server is down, speech
 automatically falls back to `say`, nothing breaks.
 
+### Speaking Hindi / Hinglish (or other languages)
+
+Voice recognition follows `vb lang`. English uses the English-only whisper
+model (most accurate); `vb lang hindi` or `vb lang hinglish` switches to
+the multilingual model automatically, Hindi transcribes in Devanagari,
+Hinglish stays in Latin script. One-time download for this:
+
+```
+curl -fSL -o ~/.voicebridge/models/ggml-small.bin --create-dirs \
+  https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin
+```
+
+Replies also switch: Kokoro speaks English/Hinglish; Hindi replies fall
+back automatically to the macOS Hindi voice (Lekha). Control words ("stop
+listening", "hey Claude") remain English. If Hinglish captures get dropped,
+loosen the gate with `vb sens relaxed`.
+
 ### Language & conversation tone
 
 Make the agent talk to you in your language, with a spoken back-and-forth

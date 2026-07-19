@@ -14,23 +14,44 @@ from pathlib import Path
 from . import core
 
 MODEL_DIR = core.STATE_DIR / "models"
-# Prefer the more accurate model when present; fall back to base.
-_MODEL_PREFERENCE = ["ggml-small.en.bin", "ggml-base.en.bin"]
+# English-only models are more accurate for English; the multilingual model
+# handles Hindi/Hinglish and everything else.
+_EN_MODELS = ["ggml-small.en.bin", "ggml-base.en.bin"]
+_MULTI_MODELS = ["ggml-small.bin", "ggml-base.bin"]
 MODEL_URL = (
     "https://huggingface.co/ggerganov/whisper.cpp/"
     "resolve/main/ggml-base.en.bin"
 )
 
 
-def _best_model():
-    for name in _MODEL_PREFERENCE:
+def _best_model(names=None):
+    for name in (names or _EN_MODELS):
         p = MODEL_DIR / name
         if p.exists():
             return p
-    return MODEL_DIR / "ggml-base.en.bin"
+    return MODEL_DIR / (names or _EN_MODELS)[-1]
 
 
 MODEL = _best_model()
+
+
+def stt_lang_mode() -> "tuple":
+    """(model_path, whisper -l arg) based on the user's vb lang setting.
+
+    hindi -> multilingual model, forced Hindi (Devanagari transcripts);
+    hinglish/anything non-English -> multilingual model, auto-detect per
+    utterance (handles the Hindi-English mix); default -> English-only
+    model, which is more accurate for pure English."""
+    lang = core.get_lang().lower()
+    if lang in ("hindi", "हिंदी"):
+        m = _best_model(_MULTI_MODELS)
+        if m.exists():
+            return m, "hi"
+    elif lang and lang != "english":
+        m = _best_model(_MULTI_MODELS)
+        if m.exists():
+            return m, "auto"
+    return _best_model(), "en"
 
 
 # Hotkey daemons (skhd) run with a minimal PATH that often lacks Homebrew,
@@ -146,11 +167,12 @@ def transcribe_ex(wav: str) -> "tuple[str, float]":
     probability, 0..1). Real directed speech scores ~0.7+; background
     chatter, mumble, and noise score low, which lets callers drop them."""
     wb = whisper_bin()
-    if not wb or not MODEL.exists():
+    model, lang = stt_lang_mode()
+    if not wb or not model.exists():
         core.log("transcribe: missing whisper binary or model")
         return "", 0.0
     base = wav + ".vbout"
-    cmd = [wb, "-m", str(MODEL), "-f", wav, "-nt", "-np", "-l", "en",
+    cmd = [wb, "-m", str(model), "-f", wav, "-nt", "-np", "-l", lang,
            "-ojf", "-of", base]   # -ojf: full JSON includes token probabilities
     try:
         out = subprocess.run(cmd, capture_output=True, text=True, timeout=120)

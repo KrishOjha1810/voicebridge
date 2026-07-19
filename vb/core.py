@@ -288,7 +288,11 @@ def speak_chunks_blocking(text: str) -> None:
     Kokoro path: synthesize sentence chunks, PLAY chunk N while chunk N+1
     synthesizes, so the first words come out after one small synth instead
     of after the whole reply. Falls back to `say` when the server is down."""
-    if get_engine() == "kokoro":
+    # Kokoro's voices are English-only; Hindi (Devanagari) replies need the
+    # macOS Hindi voice, so skip straight to the say path for those.
+    lang = get_lang().lower()
+    kokoro_ok = get_engine() == "kokoro" and lang not in ("hindi", "हिंदी")
+    if kokoro_ok:
         chunks = split_speech_chunks(text)
         slots = [str(STATE_DIR / f"speech-{i}.wav") for i in (0, 1)]
         cur = _kokoro_wav(chunks[0], out=slots[0])
@@ -310,7 +314,9 @@ def speak_chunks_blocking(text: str) -> None:
             return
     voice = get_voice()
     if _KOKORO_VOICE_RE.match(voice or ""):
-        voice = ""   # say can't use kokoro voice names
+        # A kokoro voice name means nothing to say; use the language's
+        # natural macOS voice instead (e.g. Lekha for Hindi).
+        voice = voice_for_lang(get_lang())
     cmd = ["say", "-r", get_rate()]
     if voice:
         cmd += ["-v", voice]
