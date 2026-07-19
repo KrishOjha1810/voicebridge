@@ -31,6 +31,10 @@ def directive(lang: str) -> str:
 
 
 def main() -> int:
+    # A new prompt means the user has moved on: stop any speech mid-sentence
+    # so the voice never talks over the next exchange.
+    core.hush()
+
     # Record which session this prompt belongs to; talkd uses it so
     # /voice-on binds to THIS session, never a guess.
     data = core.read_hook_input()
