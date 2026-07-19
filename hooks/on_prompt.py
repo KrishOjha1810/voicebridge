@@ -16,7 +16,11 @@ from vb import core  # noqa: E402
 
 def directive(lang: str) -> str:
     low = lang.lower()
-    if "hinglish" in low:
+    if low == "auto":
+        how = ("Respond in the same language the user's message is in "
+               "(English, Hindi in Devanagari, or Hinglish in Latin script, "
+               "mirror them).")
+    elif "hinglish" in low:
         how = "Respond in Hinglish (a natural, casual mix of Hindi and " \
               "English written in Latin script)."
     elif low in ("hindi", "हिंदी"):

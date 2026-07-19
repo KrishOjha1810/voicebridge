@@ -427,7 +427,11 @@ def main(argv) -> int:
         print(f"language: {name}")
         print(f"voice   : {core.voice_for_lang(name) or '(system default)'}")
         low = name.lower()
-        if "hinglish" in low:
+        if low == "auto":
+            core.speak("Okay, I'll detect your language automatically. "
+                       "Speak English, Hindi, or Hinglish, whatever comes "
+                       "naturally.")
+        elif "hinglish" in low:
             core.speak("Done, ab main Hinglish mein baat karunga.")
         elif low in ("hindi", "हिंदी"):
             core.speak("ठीक है, अब "

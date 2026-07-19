@@ -38,19 +38,20 @@ MODEL = _best_model()
 def stt_lang_mode() -> "tuple":
     """(model_path, whisper -l arg) based on the user's vb lang setting.
 
-    hindi -> multilingual model, forced Hindi (Devanagari transcripts);
-    hinglish/anything non-English -> multilingual model, auto-detect per
-    utterance (handles the Hindi-English mix); default -> English-only
-    model, which is more accurate for pure English."""
+    Default is AUTO: the multilingual model detects the language per
+    utterance, so you can switch between English, Hindi, and Hinglish
+    mid-conversation without touching anything. Explicit settings:
+    'english' pins the English-only model (slightly more accurate for pure
+    English), 'hindi' forces Devanagari transcripts."""
     lang = core.get_lang().lower()
-    if lang in ("hindi", "हिंदी"):
-        m = _best_model(_MULTI_MODELS)
-        if m.exists():
-            return m, "hi"
-    elif lang and lang != "english":
-        m = _best_model(_MULTI_MODELS)
-        if m.exists():
-            return m, "auto"
+    multi = _best_model(_MULTI_MODELS)
+    if lang in ("hindi", "हिंदी") and multi.exists():
+        return multi, "hi"
+    if lang == "english":
+        return _best_model(), "en"
+    # "", "auto", "hinglish", or anything else -> detect per utterance
+    if multi.exists():
+        return multi, "auto"
     return _best_model(), "en"
 
 

@@ -240,20 +240,20 @@ automatically falls back to `say`, nothing breaks.
 
 ### Speaking Hindi / Hinglish (or other languages)
 
-Voice recognition follows `vb lang`. English uses the English-only whisper
-model (most accurate); `vb lang hindi` or `vb lang hinglish` switches to
-the multilingual model automatically, Hindi transcribes in Devanagari,
-Hinglish stays in Latin script. One-time download for this:
+**Language is auto-detected by default**: speak English, Hindi, or
+Hinglish, switch mid-conversation, and both recognition and the reply
+language follow you (Hindi replies are even spoken by the Mac's Hindi
+voice automatically). Requires the multilingual model, one-time download:
 
 ```
 curl -fSL -o ~/.voicebridge/models/ggml-small.bin --create-dirs \
   https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin
 ```
 
-Replies also switch: Kokoro speaks English/Hinglish; Hindi replies fall
-back automatically to the macOS Hindi voice (Lekha). Control words ("stop
-listening", "hey Claude") remain English. If Hinglish captures get dropped,
-loosen the gate with `vb sens relaxed`.
+Pinning instead of auto: `vb lang english` (slightly better pure-English
+accuracy), `vb lang hindi` (force Devanagari), `vb lang auto` (default).
+Control words ("stop listening", "hey Claude") remain English. If Hinglish
+captures get dropped, loosen the gate with `vb sens relaxed`.
 
 ### Language & conversation tone
 
