@@ -402,6 +402,35 @@ def _is_echo(text: str, window_s: float = 90.0) -> bool:
     return overlap >= 0.6
 
 
+def _is_assistant_echo(text: str) -> bool:
+    """True if the capture is really a recent ASSISTANT REPLY being read
+    aloud, by anyone. Another app (e.g. the Claude desktop app's voice
+    mode) can speak a reply we never voiced; our history won't know it,
+    but the session transcripts do, so compare against the latest reply of
+    every voiced session and drop matches instead of injecting them."""
+    heard = _WORD_RE.findall(text.lower())
+    if len(heard) < 6:
+        return False
+    try:
+        files = list(VOICED.iterdir())
+    except FileNotFoundError:
+        return False
+    for f in files:
+        try:
+            reply = core.last_assistant_text(f.read_text().strip())
+        except Exception:
+            continue
+        if not reply:
+            continue
+        spoken = set(_WORD_RE.findall(reply.lower()))
+        if not spoken:
+            continue
+        overlap = sum(1 for w in heard if w in spoken) / len(heard)
+        if overlap >= 0.6:
+            return True
+    return False
+
+
 ATTENTION_RE = re.compile(
     r"\b(wait|stop|listen|hold on|hey|claude|pause|excuse me|one second|"
     r"hang on)\b", re.IGNORECASE)
@@ -463,7 +492,7 @@ def _speak_interruptible(text: str) -> str:
             except OSError:
                 continue
             heard = stt.transcribe(wav)
-            if not heard or is_noise(heard):
+            if not heard or is_noise(heard) or _is_assistant_echo(heard):
                 continue
             residue, overlap = echo_residue(heard)
             if overlap < 0.55:
@@ -597,6 +626,9 @@ def run_daemon() -> int:
                 continue
             if _is_echo(text):
                 core.log(f"talkd echo dropped: {text[:80]}")
+                continue
+            if _is_assistant_echo(text):
+                core.log(f"talkd assistant-echo dropped: {text[:80]}")
                 continue
             ok, why = accept_capture(text, conf, stt.loudness(wav))
             if not ok:
