@@ -201,6 +201,22 @@ def status() -> str:
 PAUSE = STATE / "pause"
 
 
+CUES = STATE / "cues"
+
+
+def cues_on() -> bool:
+    """Listening beeps (Tink/Pop/Morse). 'off' silences them entirely."""
+    try:
+        return CUES.read_text().strip() != "off"
+    except Exception:
+        return True
+
+
+def _cue(sound: str) -> None:
+    if cues_on():
+        _beep(sound)
+
+
 def get_pause() -> float:
     """Seconds of silence that end an utterance (default 2.5)."""
     try:
@@ -375,7 +391,7 @@ def run_daemon() -> int:
         else:
             _wait_for_silence()   # never record while ANY speech is playing
             if mode == "all" or in_follow:
-                _beep(START_TINK)   # wake mode listens silently (ambient)
+                _cue(START_TINK)   # wake mode listens silently (ambient)
                 time.sleep(0.35)
             try:
                 os.remove(wav)
@@ -403,7 +419,7 @@ def run_daemon() -> int:
                         cut = True
                         break
             if mode == "all" or in_follow:
-                _beep(STOP_POP)
+                _cue(STOP_POP)
             if cut:
                 continue
 
@@ -473,6 +489,6 @@ def run_daemon() -> int:
 
         core.log(f"talkd you: {text}")
         inject.paste_text(text, send=True)
-        _beep(THINK)
+        _cue(THINK)
         time.sleep(1.0)
         prev[tp] = core.last_assistant_text(tp)

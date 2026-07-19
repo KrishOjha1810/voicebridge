@@ -214,6 +214,14 @@ def main(argv) -> int:
             print("voice  : set a kokoro voice, e.g. vb voice af_heart")
             print("         (list: curl -s localhost:8798/voices)")
 
+    elif cmd == "cues":
+        from vb import talkd as _td
+        if rest and rest[0] in ("on", "off"):
+            _td.STATE.mkdir(parents=True, exist_ok=True)
+            _td.CUES.write_text(rest[0])
+        print(f"cues : {'on' if _td.cues_on() else 'off'} "
+              "(listening beeps; vb cues on|off)")
+
     elif cmd == "mode":
         from vb import talkd as _td
         if rest and rest[0] in ("wake", "all"):
