@@ -301,7 +301,7 @@ def _kokoro_wav(text: str, out: str = "") -> str:
     if not _KOKORO_VOICE_RE.match(voice or ""):
         voice = "af_heart"
     try:
-        speed = max(0.6, min(1.4, float(get_rate()) / 175.0))
+        speed = max(0.6, min(1.6, float(get_rate()) / 175.0))
     except ValueError:
         speed = 1.0
     payload = json.dumps({"text": text, "voice": voice, "speed": speed})

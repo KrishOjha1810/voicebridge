@@ -124,7 +124,8 @@ FLEET (control many sessions by voice, or from the terminal)
   vb sessions                     list them   |   vb alerts on|off
 
 PHONE     vb phone  (or /phone)   scan the QR, talk from anywhere
-VOICE     vb voice <name>         change voice   |   vb rate <wpm>
+VOICE     vb voice <name>         change voice   |   vb speed 1.5  (or say
+                                  "speak faster" / "slow down")
 AGENTS    vb agent add <name> <glob> <kind>      use with Codex/Cursor/etc.
 SETUP     vb doctor               health check   |   see README for install
 """
@@ -633,6 +634,25 @@ def main(argv) -> int:
             print(f"mic: {'ON' if mic.exists() else 'OFF'}")
             print("note: only has effect inside a `vb session` "
                   "(voicemode channel running)")
+
+    elif cmd == "speed":
+        # Podcast-style multiplier (1x, 1.5x, 2x). Reuses the rate plumbing:
+        # effective wpm = 175 * multiplier, which both say and Kokoro honor.
+        base = 175.0
+        if rest:
+            try:
+                x = float(rest[0].rstrip("xX"))
+            except ValueError:
+                x = 1.0
+            x = max(0.5, min(2.5, x))
+            core.STATE_DIR.mkdir(parents=True, exist_ok=True)
+            core.RATE_FILE.write_text(str(int(round(base * x))))
+            print(f"speed: {x:g}x  ({core.get_rate()} wpm)")
+            core.speak(f"This is {x:g} times speed.")
+        else:
+            x = int(core.get_rate()) / base
+            print(f"speed: {x:.2g}x  ({core.get_rate()} wpm)")
+            print("set: vb speed 1.5   (0.5x to 2.5x; or say 'speak faster')")
 
     elif cmd == "rate":
         if not rest:

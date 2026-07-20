@@ -103,6 +103,20 @@ READLAST_RE = re.compile(
     r"(?: reply| say| said| output)[.!?\s]*$", re.IGNORECASE)
 ALERTS = STATE / "alerts"   # "on" (default): announce agents that go idle
 
+FASTER_RE = re.compile(r"^\s*(speak |talk |go )?(faster|speed up|quicker)"
+                       r"[.!\s]*$", re.IGNORECASE)
+SLOWER_RE = re.compile(r"^\s*(speak |talk |go )?(slower|slow down|slow it "
+                       r"down)[.!\s]*$", re.IGNORECASE)
+NORMAL_SPEED_RE = re.compile(r"^\s*(normal|regular|default) speed[.!\s]*$",
+                             re.IGNORECASE)
+
+
+def _adjust_speed(delta: float = 0.0, absolute: float = 0.0) -> str:
+    cur = int(core.get_rate()) / 175.0
+    x = absolute if absolute else max(0.5, min(2.5, cur + delta))
+    core.RATE_FILE.write_text(str(int(round(175.0 * x))))
+    return f"{x:g} times speed"
+
 
 def alerts_on() -> bool:
     try:
@@ -862,6 +876,17 @@ def run_daemon() -> int:
         if m_sw and not m_sw.group(1).rstrip().endswith("mode"):
             from . import sessions as _sess
             core.speak(_sess.switch(m_sw.group(1)), blocking=True)
+            continue
+
+        # Playback speed by voice.
+        if FASTER_RE.match(text):
+            core.speak(_adjust_speed(delta=0.25), blocking=True)
+            continue
+        if SLOWER_RE.match(text):
+            core.speak(_adjust_speed(delta=-0.25), blocking=True)
+            continue
+        if NORMAL_SPEED_RE.match(text):
+            core.speak(_adjust_speed(absolute=1.0), blocking=True)
             continue
 
         # Mode switching by voice, from either mode.
