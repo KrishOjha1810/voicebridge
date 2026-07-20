@@ -29,6 +29,8 @@ a `vb` command shim, Kokoro voice, hooks, and the slash commands.
    ```ahk
    ^!#z:: Run, vb stop      ; Ctrl+Alt+Win+Z = stop
    ^!#x:: Run, vb hush      ; Ctrl+Alt+Win+X = silence
+   F9::  Run, vb faster     ; F9 = speed up
+   F7::  Run, vb slower     ; F7 = slow down
    ```
    Or just start typing, that always interrupts.
 
