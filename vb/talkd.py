@@ -136,18 +136,16 @@ def is_noise(text: str) -> bool:
 
 
 # voicebridge speakers use Latin (English/Hinglish) or Devanagari (Hindi).
-# A capture dominated by other scripts (Korean/CJK/Cyrillic/...) is almost
-# always background media (e.g. a TV), not the user, so drop it.
-_SUPPORTED = re.compile(r"[A-Za-zऀ-ॿ]")
+# Any capture containing foreign-script letters (Korean/CJK/Cyrillic/Arabic/
+# ...) is background media (a TV, a video), never the user, so drop it. Even
+# two such characters is a giveaway ("MBC 뉴스"): real speech has none.
 _LETTER = re.compile(r"[^\W\d_]", re.UNICODE)
 
 
 def _foreign_script(text: str) -> bool:
-    letters = _LETTER.findall(text)
-    if len(letters) < 3:
-        return False
-    supported = len(_SUPPORTED.findall(text))
-    return supported / len(letters) < 0.5
+    other = [c for c in _LETTER.findall(text)
+             if not ("a" <= c.lower() <= "z" or "ऀ" <= c <= "ॿ")]
+    return len(other) >= 2
 
 
 # ---------- state helpers (called from the hook and the CLI) -----------------
