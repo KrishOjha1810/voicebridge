@@ -436,8 +436,9 @@ def _is_assistant_echo(text: str) -> bool:
 
 
 ATTENTION_RE = re.compile(
-    r"\b(wait|stop|listen|hold on|hey|claude|pause|excuse me|one second|"
-    r"hang on)\b", re.IGNORECASE)
+    r"\b(wait|stop|listen|hold on|hey|claude|glory|cloud|clod|pause|"
+    r"excuse me|one second|hang on|escape|shut up|quiet|chup)\b",
+    re.IGNORECASE)
 
 
 def echo_residue(text: str, window_s: float = 90.0) -> "tuple[str, float]":
@@ -480,7 +481,7 @@ def _speak_interruptible(text: str) -> str:
                 pass
             # Short capture windows so barge-ins are judged quickly even
             # while our own audio keeps the room from ever going silent.
-            rec = stt.record_start(wav, max_secs=8, silence_stop=1.0)
+            rec = stt.record_start(wav, max_secs=6, silence_stop=0.7)
             if rec is None:
                 say.wait()
                 break

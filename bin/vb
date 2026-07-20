@@ -223,6 +223,10 @@ def main(argv) -> int:
         core.speak_chunks_blocking(text)
         return 0
 
+    elif cmd == "hush":
+        core.hush()
+        print("hushed")
+
     elif cmd == "sens":
         from vb import talkd as _td
         if rest and rest[0] in ("relaxed", "normal", "strict"):
