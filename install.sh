@@ -121,7 +121,19 @@ else
   echo "  skipped (enable later per README 'Better voice: Kokoro')"
 fi
 
-say_step "7/7 Health check"
+say_step "7/8 Silence hotkey (Cmd+Alt+Ctrl+X to hush the voice)"
+if brew list skhd >/dev/null 2>&1 || brew install koekeishiya/formulae/skhd; then
+  SKHDRC="$HOME/.skhdrc"
+  if ! grep -q "vb hush" "$SKHDRC" 2>/dev/null; then
+    printf '\n# voicebridge: silence the voice instantly\ncmd + alt + ctrl - x : %s hush\n' "$BIN_DIR/vb" >> "$SKHDRC"
+  fi
+  skhd --restart-service >/dev/null 2>&1 || skhd --start-service >/dev/null 2>&1 || true
+  echo "  hotkey ready: Cmd+Alt+Ctrl+X  (grant skhd Accessibility if asked)"
+else
+  echo "  (skhd optional; typing a prompt also interrupts instantly)"
+fi
+
+say_step "8/8 Health check"
 "$BIN_DIR/vb" doctor || true
 
 cat <<'EOF'

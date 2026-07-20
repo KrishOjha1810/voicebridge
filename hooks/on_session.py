@@ -17,7 +17,7 @@ HINT = """\
   START      /voice-on        talk to this session, hear replies
   HEY-CLAUDE /voice-wake      only reacts to "hey Claude ..."
   STOP       /voice-off       (or say "stop listening")
-  INTERRUPT  just start typing your next message, the voice stops instantly
+  🔇 SILENCE  Cmd+Alt+Ctrl+X   hush the voice instantly (or just start typing)
   PHONE      vb phone         use it from your phone (shows a QR to scan)
   VOICE      vb voice <name>  change the voice (vb voice = list all)
 """

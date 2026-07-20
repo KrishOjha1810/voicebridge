@@ -54,6 +54,7 @@ Speak. That's it.
 | `/voicebridge:voice-on` | start talking to this session, hear replies |
 | `/voicebridge:voice-wake` | hands-free; only reacts to "hey Claude ..." |
 | `/voicebridge:voice-off` | stop |
+| **Cmd+Alt+Ctrl+X** | **silence the voice instantly** (or just start typing) |
 | `vb phone` | use it from your phone (prints a QR to scan) |
 | `vb voice <name>` | change the voice (`vb voice` lists all) |
 
