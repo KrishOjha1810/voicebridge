@@ -277,24 +277,21 @@ def get_engine() -> str:
         return "say"
 
 
-def split_speech_chunks(text: str, max_chars: int = 300,
-                        first_max: int = 120) -> list:
-    """Split a reply into sentence-ish chunks so playback can start after
-    the FIRST sentence synthesizes instead of after the whole reply. The
-    first chunk is kept small so the voice starts as fast as possible."""
-    sents = re.split(r"(?<=[.!?])\s+", text)
-    chunks, cur = [], ""
-    for s in sents:
-        cap = first_max if not chunks else max_chars
-        if len(cur) + len(s) + 1 <= cap:
-            cur = f"{cur} {s}".strip()
-        else:
-            if cur:
-                chunks.append(cur)
-            cur = s
-    if cur:
-        chunks.append(cur)
-    return chunks or [text]
+def split_speech_chunks(text: str, first_max: int = 140) -> list:
+    """Two chunks only: a small FIRST chunk so the voice starts fast, then
+    ALL the rest as one piece. This avoids a synthesis gap (audible pause)
+    at every sentence, the voice flows naturally and only pauses once, at
+    the very start, which the listener never notices."""
+    sents = re.split(r"(?<=[.!?])\s+", text.strip())
+    if not sents:
+        return [text]
+    first = sents[0]
+    i = 1
+    while i < len(sents) and len(first) + len(sents[i]) + 1 <= first_max:
+        first = f"{first} {sents[i]}"
+        i += 1
+    rest = " ".join(sents[i:]).strip()
+    return [first, rest] if rest else [first]
 
 
 def _kokoro_wav(text: str, out: str = "") -> str:

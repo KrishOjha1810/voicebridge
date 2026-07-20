@@ -176,15 +176,23 @@ def voice_on(ensure: bool = True) -> str:
                 "session first, then run /voice-on again.")
     sid, tp = last["session_id"], last["transcript_path"]
     VOICED.mkdir(parents=True, exist_ok=True)
+    # Exclusive: only ONE session is voiced at a time. With a single mic,
+    # multiple voiced sessions hear each other's spoken replies and inject
+    # them as prompts, drop the others so voice always belongs to here.
+    for f in VOICED.iterdir():
+        if f.name != sid:
+            try:
+                f.unlink()
+            except OSError:
+                pass
     (VOICED / sid).write_text(tp)
     ACTIVE.write_text(json.dumps(last))
     app = bind_app()
     if ensure:
         ensure_daemon()
-    n = len(list(VOICED.iterdir()))
     where = f" Bound to {app}; ignored elsewhere." if app else ""
-    return (f"voice mode ON for session {sid[:8]} ({n} voiced session"
-            f"{'s' if n != 1 else ''}). Mic follows this session now.{where}")
+    return (f"voice mode ON for session {sid[:8]}. This session only; any "
+            f"other session's voice is now off.{where} Mic is yours here.")
 
 
 def voice_off(ensure: bool = True) -> str:
