@@ -118,13 +118,29 @@ def main(argv) -> int:
         core.speak("Voice bridge on. I'll speak as I work.")
 
     elif cmd == "off":
+        # Master stop: silence + stop the watcher AND the listening daemon,
+        # and clear all voiced sessions. The one command that stops
+        # everything, everywhere. (Per-session stop is /voice-off.)
         try:
             core.ENABLED_FLAG.unlink()
         except FileNotFoundError:
             pass
         stop_watcher()
-        subprocess.run(["pkill", "-x", "say"], capture_output=True)
-        print("voicebridge: OFF")
+        core.hush()
+        try:
+            from vb import talkd as _td
+            _td.stop_daemon()
+            if _td.VOICED.exists():
+                for f in _td.VOICED.iterdir():
+                    f.unlink()
+            for extra in ("active.json",):
+                p = _td.STATE / extra
+                if p.exists():
+                    p.unlink()
+        except Exception:
+            pass
+        print("voicebridge OFF (all voice stopped). Run /voice-on to start "
+              "again.")
 
     elif cmd == "status":
         print(f"enabled : {core.is_enabled()}")
@@ -284,8 +300,8 @@ def main(argv) -> int:
 
     elif cmd == "mode":
         from vb import talkd as _td
-        if rest and rest[0] in ("wake", "all"):
-            _td.set_mode(rest[0])
+        if rest and rest[0] in ("wake", "all", "full"):
+            _td.set_mode("all" if rest[0] in ("all", "full") else "wake")
             core.speak("Wake word mode. Say hey Claude when you need me."
                        if rest[0] == "wake"
                        else "Agent mode. I'm taking everything now.")
