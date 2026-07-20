@@ -202,6 +202,18 @@ PAUSE = STATE / "pause"
 
 
 CUES = STATE / "cues"
+BARGE = STATE / "barge"
+
+
+def get_barge() -> str:
+    """Voice barge-in (talking over speech to interrupt). Default OFF:
+    voice-interrupt can't always tell the user from the speaker echo, so
+    the reliable interrupts are typing a new prompt or the hush hotkey."""
+    try:
+        v = BARGE.read_text().strip()
+        return v if v in ("on", "off") else "off"
+    except Exception:
+        return "off"
 
 
 def get_cues() -> str:
@@ -471,6 +483,14 @@ def _speak_interruptible(text: str) -> str:
         return ""
     say = core.start_speech(t)   # engine-aware (kokoro or say) + echo record
     if say is None:
+        return ""
+    if get_barge() != "on":
+        # Voice barge-in disabled (default): play the reply out; it stays
+        # interruptible by a typed prompt (hook hush) or the hotkey.
+        try:
+            say.wait()
+        except Exception:
+            pass
         return ""
     wav = str(STATE / "barge.wav")
     try:

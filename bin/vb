@@ -223,6 +223,16 @@ def main(argv) -> int:
         core.speak_chunks_blocking(text)
         return 0
 
+    elif cmd == "barge":
+        from vb import talkd as _td
+        if rest and rest[0] in ("on", "off"):
+            _td.STATE.mkdir(parents=True, exist_ok=True)
+            _td.BARGE.write_text(rest[0])
+        print(f"voice barge-in : {_td.get_barge()}")
+        print("  off (default) = interrupt by typing a prompt or the hush")
+        print("                  hotkey (Cmd+Alt+Ctrl+X); reliable")
+        print("  on            = talking over the voice also interrupts")
+
     elif cmd == "hush":
         core.hush()
         print("hushed")
