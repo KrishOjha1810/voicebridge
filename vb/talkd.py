@@ -72,14 +72,18 @@ MUTE_RE = re.compile(
 MODE = STATE / "mode"   # "all" (default): every utterance goes in
                         # "wake": only utterances addressed to the wake word
 
-# Whisper renders "Claude" many ways. A bare strict name can wake it;
-# loose homophones (cloud/clod/...) need a greeting so ordinary sentences
-# like "cloud computing is..." never trigger.
-_GREET = r"(?:hey|ok|okay|yo|hi|hai|he)"
-_STRICT = r"(?:claude|claud|klaude?|clyde)"
-_LOOSE = r"(?:cloud|clod|clawed|clot|claw|glod|glaud|clown|clued|klaud)"
+# Whisper hears "Claude" a dozen ways. Be generous: an optional greeting
+# then Claude OR any close homophone, at the START of the utterance, wakes
+# it. Users asked for leniency ("hey cloud", "you cloud", "glory" should all
+# work), so bare homophones at the start trigger too. False fires on
+# "cloud computing..." are acceptable in wake mode (it's opt-in) and the
+# real prompt still follows.
+_GREET = r"(?:hey|ok|okay|yo|hi|hai|he|hello|yes|you|a|ay|oi)"
+_STRICT = r"(?:claude|claud|klaude?|clyde|cloudy)"
+_LOOSE = (r"(?:cloud|clod|clawed|clot|claw|glod|glaud|glory|gloria|clown|"
+          r"clued|klaud|crowd|loud|clode|chlo|flow|lord)")
 WAKE_RE = re.compile(
-    rf"^\s*(?:{_GREET}[,!\s]+(?:{_STRICT}|{_LOOSE})|{_STRICT})\b[,!.\s]*(.*)$",
+    rf"^\s*(?:{_GREET}[,!\s]+)?(?:{_STRICT}|{_LOOSE})\b[,!.\s]*(.*)$",
     re.IGNORECASE | re.DOTALL)
 
 # Voice toggles are heard imperfectly ("weak word mode", "wait word mode"),
