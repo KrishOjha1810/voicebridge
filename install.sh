@@ -38,14 +38,17 @@ BIN_DIR="/opt/homebrew/bin"; [ -d "$BIN_DIR" ] || BIN_DIR="/usr/local/bin"
 ln -sf "$REPO_DIR/bin/vb" "$BIN_DIR/vb"
 echo "  linked: $BIN_DIR/vb -> $REPO_DIR/bin/vb"
 
-say_step "4/6 Slash commands (/voice-on, /voice-off)"
+say_step "4/6 Slash commands (/voice-on, /voice-off, /phone, /voice-help, ...)"
 mkdir -p "$CLAUDE_DIR/commands"
-for f in voice-on.md voice-off.md; do
+# Every command in commands/, not a hand-kept list: that list silently fell
+# behind and left /phone, /voice-stop and /voice-off-all uninstalled, so they
+# existed in the repo and did nothing on the machine.
+for src in "$REPO_DIR"/commands/*.md; do
   # Point the command at wherever vb actually landed on this machine.
-  sed "s|/opt/homebrew/bin/vb|$BIN_DIR/vb|g" "$REPO_DIR/commands/$f" \
-    > "$CLAUDE_DIR/commands/$f"
+  sed "s|/opt/homebrew/bin/vb|$BIN_DIR/vb|g" "$src" \
+    > "$CLAUDE_DIR/commands/$(basename "$src")"
 done
-echo "  installed to $CLAUDE_DIR/commands/"
+echo "  installed $(ls -1 "$REPO_DIR"/commands/*.md | wc -l | tr -d ' ') commands to $CLAUDE_DIR/commands/"
 
 say_step "5/7 Hooks in ~/.claude/settings.json"
 if [ "${VB_SKIP_HOOKS:-}" = "1" ]; then
