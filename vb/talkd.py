@@ -20,6 +20,7 @@ State (~/.voicebridge/talk/):
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -169,6 +170,61 @@ def _read_json(path):
         return None
 
 
+# ---------- the silence hotkey ------------------------------------------------
+#
+# Cmd+Alt+Ctrl+X is delivered by skhd, which reads ~/.skhdrc and needs its own
+# Accessibility grant. Installing it as a launchd service means a keyboard
+# hook running at login forever, for a key that only means anything while we
+# are speaking. So voice owns its lifetime instead: up when the first session
+# is voiced, down when the last one leaves.
+
+HOTKEY_PID = STATE / "skhd.pid"
+
+
+def _pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+        return True
+    except Exception:
+        return False
+
+
+def hotkey_up() -> None:
+    """Start skhd for the duration of voice mode, if it isn't already up.
+
+    An skhd the user runs themselves (for their own bindings) is left alone:
+    we only ever stop one we started, tracked by HOTKEY_PID."""
+    skhd = shutil.which("skhd")
+    if not skhd:
+        return
+    if subprocess.run(["pgrep", "-x", "skhd"],
+                      capture_output=True).returncode == 0:
+        return
+    try:
+        p = subprocess.Popen([skhd], stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL, start_new_session=True)
+        HOTKEY_PID.write_text(str(p.pid))
+    except Exception as e:
+        core.log(f"hotkey_up failed: {e}")
+
+
+def hotkey_down() -> None:
+    """Stop the skhd we started. Never touches one that was already running."""
+    try:
+        pid = int(HOTKEY_PID.read_text().strip())
+    except Exception:
+        return
+    if _pid_alive(pid):
+        try:
+            os.kill(pid, 15)
+        except Exception as e:
+            core.log(f"hotkey_down failed: {e}")
+    try:
+        HOTKEY_PID.unlink()
+    except FileNotFoundError:
+        pass
+
+
 def voice_on(ensure: bool = True) -> str:
     last = _read_json(LAST)
     if not last:
@@ -181,6 +237,7 @@ def voice_on(ensure: bool = True) -> str:
     app = bind_app()
     if ensure:
         ensure_daemon()
+        hotkey_up()
     n = len(list(VOICED.iterdir()))
     where = f" Bound to {app}; ignored elsewhere." if app else ""
     return (f"voice mode ON for session {sid[:8]} ({n} voiced session"
@@ -208,6 +265,39 @@ def voice_off(ensure: bool = True) -> str:
         return f"voice mode OFF for session {sid[:8]}. No voiced sessions left; mic stopped."
     return (f"voice mode OFF for session {sid[:8]}. "
             f"{len(remaining)} voiced session(s) remain.")
+
+
+def voice_off_all() -> str:
+    """Leave voice mode everywhere and release the microphone.
+
+    /voice-off only knows about the session it runs in, and nothing removes a
+    marker for a session that was closed rather than turned off. Those
+    leftovers keep the daemon alive holding the input device, and they cannot
+    be cleared from the window that created them because that window is gone.
+    Deleting the markers by hand does not help either: the daemon only
+    re-reads the directory when it hears a spoken exit phrase. So this is the
+    one command that ends voice for the whole machine, from any terminal."""
+    sids = sorted(f.name for f in VOICED.iterdir()) if VOICED.exists() else []
+    for sid in sids:
+        try:
+            (VOICED / sid).unlink()
+        except FileNotFoundError:
+            pass
+    try:
+        ACTIVE.unlink()
+    except FileNotFoundError:
+        pass
+    if daemon_alive():
+        stop_daemon()
+        freed = "mic released."
+    else:
+        freed = "daemon was already stopped."
+    if not sids:
+        head = "no voiced sessions."
+    else:
+        head = "voice mode OFF for %d session(s): %s." % (
+            len(sids), ", ".join(s[:8] for s in sids))
+    return f"{head} {freed}\n{status()}"
 
 
 def daemon_alive() -> bool:
@@ -241,6 +331,14 @@ def stop_daemon() -> None:
     except FileNotFoundError:
         pass
     subprocess.run(["pkill", "-x", "say"], capture_output=True)
+    # The recorder is a plain child of the daemon, so killing the daemon
+    # orphans it rather than stopping it: it keeps the input device until it
+    # hits its own trim limit, up to 30 seconds. We just told the user the mic
+    # was released. Match on our own wav so an unrelated sox recording of the
+    # user's survives.
+    subprocess.run(["pkill", "-f", str(STATE / "talkd.wav")],
+                   capture_output=True)
+    hotkey_down()
 
 
 def status() -> str:
