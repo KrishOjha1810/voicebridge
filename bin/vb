@@ -148,8 +148,9 @@ HELP = """voicebridge , talk to your coding agents, hands-free.
   Rule of thumb:  /commands control THIS session.  vb ... controls everything.
 
 START (type inside a Claude Code session)
-  /voice-on      talk to this session, replies spoken (headphones best)
-  /voice-wake    stays quiet until you say "hey Claude ..." (good near others)
+  /voice-on      speak-only: replies read aloud; you type or press space to talk
+  /voice-agent   hands-free: our mic listens to everything you say
+  /voice-wake    hands-free, but only reacts to "hey Claude ..."
   /voice-off     stop voice in this session
 
 STOP / INTERRUPT (least to most)
@@ -438,8 +439,8 @@ def main(argv) -> int:
         faces = {
             "listening": "🎙 listening", "hearing": "🎙 hearing",
             "thinking": "✍ transcribing", "speaking": "🔊 speaking",
-            "wake": "💤 wake-word", "away": "⏸ not focused",
-            "off": "○ voice off",
+            "wake": "💤 wake-word", "speakonly": "🔉 reads replies",
+            "away": "⏸ not focused", "off": "○ voice off",
         }
         print(f"vb {faces.get(phase, faces['off'])}{bar}")
 
@@ -565,14 +566,19 @@ def main(argv) -> int:
 
     elif cmd == "mode":
         from vb import talkd as _td
-        if rest and rest[0] in ("wake", "all", "full"):
-            _td.set_mode("all" if rest[0] in ("all", "full") else "wake")
-            core.speak("Wake word mode. Say hey Claude when you need me."
-                       if rest[0] == "wake"
-                       else "Agent mode. I'm taking everything now.")
+        if rest and rest[0] in ("wake", "all", "full", "speak"):
+            val = "all" if rest[0] in ("all", "full") else rest[0]
+            _td.set_mode(val)
+            core.speak({
+                "wake": "Wake word mode. Say hey Claude when you need me.",
+                "all": "Agent mode. I'm taking everything now.",
+                "speak": "Speak only. I'll read replies aloud; press space "
+                         "or type to give me a prompt.",
+            }[val])
         print(f"mode : {_td.get_mode()}")
-        print("  all  = agent mode, every utterance goes to Claude")
-        print("  wake = ambient; only 'hey Claude ...' is sent")
+        print("  all   = agent mode, every utterance goes to Claude")
+        print("  wake  = ambient; only 'hey Claude ...' is sent")
+        print("  speak = mic off; reads replies aloud, you type / space-to-talk")
         print("(switch by voice too: say 'wake word mode' / 'agent mode')")
 
     elif cmd == "pause":

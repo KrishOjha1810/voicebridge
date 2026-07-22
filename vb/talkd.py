@@ -34,6 +34,7 @@ VOICED = STATE / "voiced"
 LAST = STATE / "last_prompt.json"
 ACTIVE = STATE / "active.json"
 PID = STATE / "talkd.pid"
+VER = STATE / "talkd.ver"   # code fingerprint of the RUNNING daemon
 
 APP = STATE / "app"    # the app /voice-on was run in; the ONLY paste target
 
@@ -151,7 +152,7 @@ CONTINUE_RE = re.compile(
 def get_mode() -> str:
     try:
         m = MODE.read_text().strip()
-        return m if m in ("all", "wake") else "all"
+        return m if m in ("all", "wake", "speak") else "all"
     except Exception:
         return "all"
 
@@ -360,6 +361,40 @@ def daemon_alive() -> bool:
         return False
 
 
+def _code_version() -> str:
+    """A cheap fingerprint (newest source mtime) of the daemon's own code.
+    A long-lived daemon keeps running the code it loaded at start, so after a
+    git pull / plugin update it still executes the OLD logic, that is how a
+    fixed bug 'comes back'. Comparing this against the running daemon's stamp
+    lets ensure_daemon restart a stale one so fixes actually take effect."""
+    pkg = os.path.dirname(os.path.abspath(__file__))
+    root = os.path.dirname(pkg)
+    latest = 0.0
+    for base, _dirs, files in os.walk(pkg):
+        for f in files:
+            if f.endswith(".py"):
+                try:
+                    latest = max(latest, os.path.getmtime(os.path.join(base, f)))
+                except OSError:
+                    pass
+    try:
+        latest = max(latest, os.path.getmtime(os.path.join(root, "bin", "vb")))
+    except OSError:
+        pass
+    return f"{latest:.0f}"
+
+
+def _kill_recorder() -> None:
+    """Kill any sox recorder the daemon left behind. It's a plain child, so
+    killing the daemon orphans it and it keeps HOLDING THE MIC until its own
+    trim limit (up to 30s). Every stop path must call this or 'voice off' can
+    leave the mic live."""
+    for wav in (STATE / "talkd.wav", STATE / "talkd_cont.wav",
+                STATE / "barge.wav"):
+        subprocess.run(["pkill", "-U", str(os.getuid()), "-f", str(wav)],
+                       capture_output=True)
+
+
 def _daemon_pids() -> list:
     # Only THIS user's daemons: another account's voicebridge (separate home
     # + state) is a different install we can't and shouldn't touch.
@@ -390,14 +425,10 @@ def _kill_all_daemons(keep: int = 0) -> None:
             os.kill(pid, signal.SIGKILL)   # force , it ignored SIGTERM
         except Exception:
             pass
+    _kill_recorder()   # never leave an orphaned recorder holding the mic
 
 
-def ensure_daemon() -> None:
-    if daemon_alive():
-        # A valid daemon owns the pid file; kill any OTHER (orphan) daemons.
-        _kill_all_daemons(keep=int(PID.read_text().strip()))
-        return
-    _kill_all_daemons()   # clear any orphan before starting a fresh one
+def _start_daemon() -> None:
     STATE.mkdir(parents=True, exist_ok=True)
     vb = os.path.join(os.path.dirname(os.path.dirname(
         os.path.abspath(__file__))), "bin", "vb")
@@ -405,6 +436,25 @@ def ensure_daemon() -> None:
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                          start_new_session=True)
     PID.write_text(str(p.pid))
+    VER.write_text(_code_version())   # stamp the code this daemon is running
+
+
+def ensure_daemon() -> None:
+    cur = _code_version()
+    if daemon_alive():
+        try:
+            running = VER.read_text().strip()
+        except Exception:
+            running = ""
+        if running == cur:
+            # Current daemon runs current code; just clear any orphans.
+            _kill_all_daemons(keep=int(PID.read_text().strip()))
+            return
+        # Stale daemon (started before a code update): restart so today's
+        # fixes actually run instead of the code it loaded hours ago.
+        core.log(f"talkd: code changed ({running} -> {cur}), restarting daemon")
+    _kill_all_daemons()   # clear stale/orphan daemons AND the mic
+    _start_daemon()
 
 
 def stop_daemon() -> None:
@@ -932,6 +982,7 @@ def run_daemon() -> int:
     _cleanup_temp()
     try:
         PID.write_text(str(os.getpid()))   # claim singleton ownership
+        VER.write_text(_code_version())    # record the code this daemon runs
     except Exception:
         pass
     # Warm the Kokoro server in the background so the FIRST reply doesn't pay
@@ -1022,6 +1073,12 @@ def run_daemon() -> int:
         # spoken. The Stop hook cannot cover for us either, it stands down
         # whenever a session is voiced (core.mic_active). So track what we
         # have said by uuid and drain the backlog in order.
+        # Mode drives everything below. "speak" = read replies aloud with the
+        # mic OFF (you give prompts with Claude's own space-to-talk, or type);
+        # "all"/"wake" open our mic. Fetched here so reply-speaking knows
+        # whether to listen for a barge-in.
+        mode = get_mode()
+
         pending = core.assistant_replies_after(tp, prev.get(tp, ""))
         if pending:
             if len(pending) > 1:
@@ -1029,16 +1086,26 @@ def run_daemon() -> int:
             barge = ""
             for uid, text in pending:
                 prev[tp] = uid      # marked read before speaking: a crash mid
-                barge = _speak_interruptible(text)   # reply must not loop it
-                if barge:
-                    queued = barge  # talked over the reply; that's the prompt
-                    break
+                if mode == "speak":
+                    core.speak(text, blocking=True)   # no mic, no barge-in
+                else:
+                    barge = _speak_interruptible(text)   # reply must not loop it
+                    if barge:
+                        queued = barge  # talked over the reply; that's the prompt
+                        break
             time.sleep(0.3)
             if not barge:
                 continue
 
+        # Speak-only mode stops here: nothing to listen for. Keep the daemon
+        # alive (fleet alerts, HUD) and idle. The orb/status line shows
+        # "reads replies" so you know it's on but not listening.
+        if mode == "speak":
+            core.set_hud("speakonly")
+            time.sleep(0.4)
+            continue
+
         # 2) Listen (or use a barge-in already captured during speech).
-        mode = get_mode()
         pause = get_pause()
         in_follow = time.time() < follow_until
         first_more = ""   # continuation captured during the overlapped listen

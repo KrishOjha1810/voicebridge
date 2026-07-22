@@ -24,8 +24,8 @@ voice services, no per-minute fees.
   whatever's focused (Codex, Cursor, Cline, Copilot), and reading replies
   back is pluggable per agent (`vb agent add`, see AGENTS.md).
 - **Real interrupt**: talk over a reply and it stops and takes your words;
-  `Cmd+Alt+Ctrl+X` silences the voice; `Cmd+Alt+Ctrl+Z` (or `/voice-stop`)
-  also sends Claude its Esc to stop generating, not just muting audio.
+  `Cmd+Alt+Ctrl+X` silences the voice; `Cmd+Alt+Ctrl+Z` also sends Claude
+  its Esc to stop generating, not just muting audio.
 - **Natural voice**: Kokoro neural TTS (54 voices, on-CPU, Apache),
   streamed so it starts speaking in ~0.4s, with macOS `say` as fallback.
   Podcast-style speed: `vb speed 1.5` (0.5x-2.5x), or say "speak faster".

@@ -104,7 +104,7 @@ Open 2-3 Claude sessions in different project folders first.
 
 ## 10. Stop everything
 - **Per session:** `/voice-off` , this session stops; "run /voice-on to start".
-- **Everywhere:** `/voice-stop` (or `vb off`) , daemon stops, all voice off.
+- **Everywhere:** `/voice-off-all` (or `vb off`) , daemon stops, all voice off.
 - **Expect:** after either, no more listening; `vb sessions` still lists
   sessions but none voiced.
 

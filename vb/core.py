@@ -128,9 +128,11 @@ HUD_FILE = STATE_DIR / "hud.json"
 #   thinking   transcribing / pasting into the session
 #   speaking   a reply is playing out loud
 #   wake       wake mode, ignoring the room until "hey Claude"
+#   speakonly  voice-on: reads replies aloud, mic OFF (you type / space-to-talk)
 #   away       you switched off the bound window, so it stopped listening
 #   off        the daemon isn't running (inferred from a stale file)
-HUD_PHASES = ("listening", "hearing", "thinking", "speaking", "wake", "away")
+HUD_PHASES = ("listening", "hearing", "thinking", "speaking", "wake",
+              "speakonly", "away")
 
 
 def set_hud(phase: str, level: float = 0.0, text: str = "") -> None:

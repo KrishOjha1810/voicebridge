@@ -42,6 +42,7 @@ STYLE = {
     "thinking":  ("THINKING",  "#f59e0b", "#5a3d0a"),
     "speaking":  ("SPEAKING",  "#a855f7", "#3b1a5c"),
     "wake":      ("WAKE WORD", "#64748b", "#1f2937"),
+    "speakonly": ("READS REPLIES", "#0ea5e9", "#0c3547"),
     "away":      ("NOT FOCUSED", "#6b7280", "#1f2937"),
     "off":       ("OFF",       "#ef4444", "#3f1414"),
 }

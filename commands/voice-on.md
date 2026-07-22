@@ -1,11 +1,13 @@
 ---
-description: Voice mode ON for this session (voicebridge) - talk hands-free, replies spoken
-allowed-tools: Bash(vb talkd:*), Bash(/opt/homebrew/bin/vb talkd:*)
+description: Voice ON (speak-only) - replies read aloud; you type or use space-to-talk for prompts (voicebridge)
+allowed-tools: Bash(vb talkd:*), Bash(vb mode:*), Bash(/opt/homebrew/bin/vb:*)
 ---
 
-Run `/opt/homebrew/bin/vb talkd on` with the Bash tool now.
+Run these two commands with the Bash tool now:
+1. `/opt/homebrew/bin/vb talkd on`
+2. `/opt/homebrew/bin/vb mode speak`
 
-If it succeeded, reply with exactly this (two lines):
-"Voice on, I'm listening. To silence me press Cmd+Alt+Ctrl+X, or just start typing."
-Silence: Cmd+Alt+Ctrl+X  |  Stop Claude: Cmd+Alt+Ctrl+Z  |  Stop listening: /voice-off
-If the command printed an ERROR, relay that error instead.
+If both succeeded, reply with exactly this (two lines):
+"Voice on. I'll read replies aloud. Give me a prompt by typing, or press space to dictate (Claude's built-in voice)."
+"Want fully hands-free? /voice-agent listens to you; /voice-off stops."
+If either printed an ERROR, relay that error instead.

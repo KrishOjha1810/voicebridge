@@ -15,12 +15,11 @@ Do not paraphrase or shorten the tables. Do not run any other command.
 
 | Command | What it does |
 |---|---|
-| `/voice-on` | Talk to this session, replies spoken. Headphones recommended |
-| `/voice-wake` | Ambient: stays quiet until you say "hey Claude ..." |
-| `/voice-agent` | Agent mode: every utterance goes to Claude |
+| `/voice-on` | Speak-only: replies read aloud; you type or press space to dictate |
+| `/voice-agent` | Hands-free: our mic listens to everything you say |
+| `/voice-wake` | Hands-free, but only reacts to "hey Claude ..." |
 | `/voice-off` | Stop voice, this session only |
 | `/voice-off-all` | Stop voice everywhere and release the mic, from any terminal |
-| `/voice-stop` | Stop listening everywhere and silence the voice |
 | `/phone` | Talk from your phone: prints a QR to scan |
 | `/voice-help` | This list |
 
