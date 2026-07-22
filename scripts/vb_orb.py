@@ -58,11 +58,16 @@ def _blend(c1: str, c2: str, t: float) -> str:
 class Orb:
     def __init__(self, root: "tk.Tk"):
         self.root = root
-        root.title("voicebridge")
-        root.overrideredirect(True)
+        root.title("voicebridge · voice")
+        # A NORMAL titled window: macOS reliably draws these. A borderless
+        # (overrideredirect) window often silently fails to appear, which is
+        # why the orb ran but nothing showed. Set VB_ORB_BARE=1 for the
+        # borderless look once you've confirmed it displays.
+        if os.environ.get("VB_ORB_BARE"):
+            root.overrideredirect(True)
         root.attributes("-topmost", True)
         try:
-            root.attributes("-alpha", 0.94)
+            root.attributes("-alpha", 0.96)
         except tk.TclError:
             pass
         sw = root.winfo_screenwidth()
