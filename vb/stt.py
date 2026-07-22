@@ -66,6 +66,95 @@ def whisper_bin() -> str:
     return ""
 
 
+# --- warm resident model (issue #2) ------------------------------------------
+# Spawning whisper-cli per utterance reloads the ~half-GB model and dlopen's
+# the BLAS/Metal/CPU backends every time: measured ~2.1s cold vs ~0.3s against
+# a warm whisper-server. So we keep one server resident (mirrors the Kokoro
+# TTS server) and fall back to the CLI whenever the server isn't available,
+# so nothing breaks on installs without whisper-server.
+WHISPER_PORT = int(os.environ.get("VB_STT_PORT", "8799"))
+
+
+def whisper_server_bin() -> str:
+    return _find("whisper-server")
+
+
+def whisper_up() -> bool:
+    try:
+        r = subprocess.run(
+            ["curl", "-s", "-m", "2", "-o", "/dev/null", "-w", "%{http_code}",
+             f"http://127.0.0.1:{WHISPER_PORT}/"],
+            capture_output=True, timeout=5)
+        # Any HTTP reply means the server is listening (root may 404/501).
+        return r.stdout.strip() not in (b"", b"000")
+    except Exception:
+        return False
+
+
+def ensure_whisper_server(wait_s: float = 20.0) -> bool:
+    """Start a resident whisper-server if one isn't already up; wait for it.
+    Returns False (and callers fall back to the CLI) if the binary or model
+    is missing, so this is always safe to call."""
+    if whisper_up():
+        return True
+    srv = whisper_server_bin()
+    model, lang = stt_lang_mode()
+    if not srv or not model.exists():
+        return False
+    try:
+        p = subprocess.Popen(
+            [srv, "-m", str(model), "-l", lang,
+             "--port", str(WHISPER_PORT), "-nt"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            start_new_session=True)
+        (core.STATE_DIR / "stt.pid").write_text(str(p.pid))
+    except Exception as e:
+        core.log(f"whisper server autostart failed: {e}")
+        return False
+    import time as _t
+    t0 = _t.time()
+    while _t.time() - t0 < wait_s:
+        if whisper_up():
+            core.log("whisper server autostarted")
+            return True
+        _t.sleep(0.4)
+    return False
+
+
+def _clean_text(text: str) -> str:
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    cleaned = " ".join(lines)
+    for tag in ("[BLANK_AUDIO]", "(blank audio)", "[ Silence ]", "[silence]"):
+        cleaned = cleaned.replace(tag, "")
+    return cleaned.strip()
+
+
+def _transcribe_server(wav: str) -> "tuple[str, float] | None":
+    """Transcribe against the warm whisper-server. Returns (text, conf) with
+    conf = mean per-word probability (same 0..1 scale the CLI path derives
+    from token probabilities), or None if the server didn't answer so the
+    caller falls back to the CLI."""
+    if not whisper_up():
+        return None
+    try:
+        r = subprocess.run(
+            ["curl", "-s", "-m", "30", f"http://127.0.0.1:{WHISPER_PORT}/inference",
+             "-F", f"file=@{wav}", "-F", "response_format=verbose_json",
+             "-F", "temperature=0.0"],
+            capture_output=True, timeout=35)
+        data = json.loads(r.stdout.decode("utf-8", "replace"))
+    except Exception as e:
+        core.log(f"whisper server inference failed: {e}")
+        return None
+    text = _clean_text(data.get("text", "") or "")
+    probs = [w.get("probability", 0.0)
+             for seg in data.get("segments", [])
+             for w in seg.get("words", [])
+             if isinstance(w.get("probability", None), (int, float))]
+    conf = sum(probs) / len(probs) if probs else 0.0
+    return text, conf
+
+
 def have_deps() -> dict:
     return {
         "whisper": whisper_bin(),
@@ -154,6 +243,11 @@ def transcribe_ex(wav: str) -> "tuple[str, float]":
     """Transcribe and also return whisper's confidence (mean token
     probability, 0..1). Real directed speech scores ~0.7+; background
     chatter, mumble, and noise score low, which lets callers drop them."""
+    # Fast path: the warm resident server (issue #2). Falls through to the
+    # CLI if it's not up or didn't answer, so behavior is identical otherwise.
+    served = _transcribe_server(wav)
+    if served is not None:
+        return served
     wb = whisper_bin()
     model, lang = stt_lang_mode()
     if not wb or not model.exists():

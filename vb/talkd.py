@@ -23,6 +23,7 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 
 from . import core, inject, stt
@@ -588,42 +589,78 @@ def get_pause() -> float:
         return 1.0
 
 
+def _transcribe_async(wav: str):
+    """Transcribe `wav` on a background thread and return a callable that
+    blocks for the (text, conf) result. Lets the caller overlap the ~1.3s
+    whisper pass with the idle end-of-speech grace window (issue #2):
+    transcribe_ex only reads the wav file, so nothing else in the loop
+    touches its state while it runs."""
+    holder = {}
+
+    def run():
+        try:
+            holder["r"] = stt.transcribe_ex(wav)
+        except Exception as e:  # never let a thread crash take the daemon
+            holder["r"] = ("", 0.0)
+            core.log(f"talkd async transcribe failed: {e}")
+
+    th = threading.Thread(target=run, daemon=True)
+    th.start()
+
+    def result():
+        th.join()
+        return holder.get("r", ("", 0.0))
+
+    return result
+
+
+def _listen_continuation(wav: str, pause: float, window: float) -> str:
+    """One follow-up listen: hold the mic up to `window` seconds for speech
+    to resume; if it does, capture until `pause` of silence and transcribe.
+    Returns the continuation text ('' if the speaker didn't resume, or it was
+    noise / too quiet). Shared by the overlapped first listen and the
+    _stitch_more loop so the accept/reject gating lives in one place."""
+    try:
+        os.remove(wav)
+    except FileNotFoundError:
+        pass
+    p = stt.record_start(wav, silence_stop=pause)
+    if p is None:
+        return ""
+    t0 = time.time()
+    started = False
+    while p.poll() is None:
+        time.sleep(0.15)
+        try:
+            started = started or os.path.getsize(wav) > 4000
+        except OSError:
+            pass
+        if not started and time.time() - t0 > window:
+            p.terminate()
+            p.wait()
+            break
+    if not started:
+        return ""
+    more, conf = stt.transcribe_ex(wav)
+    if not more or is_noise(more):
+        return ""
+    min_conf, _ = _SENS_TH[get_sens()]
+    if conf and conf < min_conf:
+        return ""
+    return more
+
+
 def _stitch_more(wav: str, pause: float, so_far: str = "") -> str:
     """After a capture, briefly keep listening: if the speaker resumes
     (they paused to think), capture the continuation(s) and return them.
 
     The follow-up window adapts to how finished the words sound: a trailing
-    'and...' holds the mic ~6s, a finished question only ~2s."""
+    'and...' holds the mic longer, a finished question only briefly."""
     parts = []
     text_so_far = so_far
     while True:
-        window = followup_window(text_so_far)
-        try:
-            os.remove(wav)
-        except FileNotFoundError:
-            pass
-        p = stt.record_start(wav, silence_stop=pause)
-        if p is None:
-            break
-        t0 = time.time()
-        started = False
-        while p.poll() is None:
-            time.sleep(0.25)
-            try:
-                started = started or os.path.getsize(wav) > 4000
-            except OSError:
-                pass
-            if not started and time.time() - t0 > window:
-                p.terminate()
-                p.wait()
-                break
-        if not started:
-            break
-        more, conf = stt.transcribe_ex(wav)
-        if not more or is_noise(more):
-            break
-        min_conf, _ = _SENS_TH[get_sens()]
-        if conf and conf < min_conf:
+        more = _listen_continuation(wav, pause, followup_window(text_so_far))
+        if not more:
             break
         parts.append(more)
         text_so_far = f"{text_so_far} {more}"
@@ -899,10 +936,14 @@ def run_daemon() -> int:
     # Warm the Kokoro server in the background so the FIRST reply doesn't pay
     # the model-load wait (and never silently drops to the robotic voice).
     if core.get_engine() == "kokoro":
-        import threading
         threading.Thread(target=core.ensure_kokoro_server,
                          daemon=True).start()
+    # Warm the STT server too, so the first utterance doesn't pay a ~2s
+    # cold model+backend load (issue #2). Falls back to the CLI if absent.
+    threading.Thread(target=stt.ensure_whisper_server, daemon=True).start()
     wav = str(STATE / "talkd.wav")
+    wav2 = str(STATE / "talkd_cont.wav")   # continuation, recorded while
+    #                                        the main capture transcribes
     prev: dict = {}
     announced: set = set()
     follow_until = 0.0   # wake mode: window after "hey Claude" alone
@@ -997,6 +1038,7 @@ def run_daemon() -> int:
         mode = get_mode()
         pause = get_pause()
         in_follow = time.time() < follow_until
+        first_more = ""   # continuation captured during the overlapped listen
         if queued:
             # A barge-in was captured while we spoke. It cleared the barge
             # bar, but it still has to clear the injection bar: conf/loudness
@@ -1050,10 +1092,22 @@ def run_daemon() -> int:
                     continue
             except OSError:
                 continue
+            # Overlap (issue #2): transcribe what we just heard on a
+            # background thread WHILE we hold the mic open for a possible
+            # continuation. The mic is idle during that grace window anyway,
+            # so the ~1.3s whisper pass hides behind it instead of adding to
+            # it. We don't yet know how finished the words sound, so this
+            # first listen uses the neutral window; if the real text turns
+            # out mid-thought, the stitch loop below extends it with the
+            # true (longer) window. If this turns out to be a command or gets
+            # dropped, the speculative continuation is simply discarded.
             _t0 = time.time()
-            text, conf = stt.transcribe_ex(wav)
+            get_text = _transcribe_async(wav)
+            first_more = _listen_continuation(wav2, pause, followup_window(""))
+            text, conf = get_text()
             core.log(f"latency: capture+silence {_t0 - t_rec:.2f}s, "
-                     f"transcribe {time.time() - _t0:.2f}s -> {text[:40]!r}")
+                     f"transcribe+listen {time.time() - _t0:.2f}s -> "
+                     f"{text[:40]!r}")
             why = screen_capture(text, conf, stt.loudness(wav), mode)
             if why:
                 if text:
@@ -1120,10 +1174,22 @@ def run_daemon() -> int:
             text = prompt
         follow_until = 0.0
 
-        # The speaker may have paused to think; stitch continuations.
-        more = _stitch_more(wav, pause, text)
-        if more:
-            text = f"{text} {more}"
+        # The speaker may have paused to think; stitch continuations. The
+        # first follow-up listen already ran during transcription (the
+        # overlap), using the neutral window. Only listen AGAIN if either the
+        # speaker actually resumed (first_more) or the now-known text is
+        # mid-thought and deserves a window longer than the neutral one we
+        # already waited. For a finished/neutral short command that got no
+        # continuation, we're done here -> no extra probe, no wasted seconds.
+        if first_more:
+            text = f"{text} {first_more}"
+            more = _stitch_more(wav2, pause, text)
+            if more:
+                text = f"{text} {more}"
+        elif followup_window(text) > followup_window(""):
+            more = _stitch_more(wav2, pause, text)
+            if more:
+                text = f"{text} {more}"
 
         if _is_exit(text) or MUTE_RE.match(text):
             try:
