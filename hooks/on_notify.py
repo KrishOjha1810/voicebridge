@@ -13,10 +13,11 @@ from vb import core  # noqa: E402
 
 
 def main() -> int:
-    if not core.is_enabled() or core.mic_active():
-        # mic_active: voicemode's spoken permission relay covers this
-        return 0
     data = core.read_hook_input()
+    sid = data.get("session_id", "")
+    # Strictly per-session: only speak notifications for a voiced session.
+    if not core.is_voiced(sid) or core.mic_active():
+        return 0
     msg = data.get("message", "") or data.get("body", "")
     if msg:
         core.speak(msg)

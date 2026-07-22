@@ -29,6 +29,16 @@ MIC_FLAG = STATE_DIR / "mic_on"
 REMAINDER = STATE_DIR / "speech_remainder"   # what the cap cut off, for `vb continue`
 
 
+def is_voiced(session_id: str) -> bool:
+    """True only if THIS session was explicitly voiced with /voice-on.
+    Speaking is gated on this so voice is strictly per-session (like Remote
+    Control): a session you never voiced never speaks, no matter what global
+    flags are set."""
+    if not session_id:
+        return False
+    return (STATE_DIR / "talk" / "voiced" / session_id).exists()
+
+
 def mic_active() -> bool:
     """True while another voicebridge component owns the session's voice
     (voicemode channel mic, or an active talkd session). Hooks and the
