@@ -167,6 +167,8 @@ FLEET (control many sessions by voice, or from the terminal)
 ORB       vb orb                  floating "am I listening?" indicator that
                                   pulses with your voice (auto-shows on
                                   /voice-on; vb orb off to hide)
+STATUSBAR vb statusline-install   show voice state in Claude Code's status
+                                  line (listening / speaking / ...)
 PHONE     vb phone  (or /phone)   scan the QR, talk from anywhere
 VOICE     vb voice <name>         change voice   |   vb speed 1.5  (or say
                                   "speak faster"; or tap F9 faster / F7 slower)
@@ -414,6 +416,52 @@ def main(argv) -> int:
             _orb_hide()
         else:
             _orb_show()
+
+    elif cmd in ("statusline", "status-line"):
+        # For Claude Code's statusLine setting: prints ONE compact line with
+        # the live voice state, so the status shows right in the terminal
+        # (Mayank's request). Claude Code pipes session JSON on stdin; we
+        # ignore it and just report voicebridge's phase.
+        try:
+            if not sys.stdin.isatty():
+                sys.stdin.read()
+        except Exception:
+            pass
+        h = core.read_hud()
+        phase = h.get("phase", "off")
+        bar = ""
+        if phase in ("hearing", "listening"):
+            lvl = float(h.get("level", 0.0))
+            blocks = "▁▂▃▄▅▆▇█"
+            n = min(len(blocks) - 1, int(lvl * (len(blocks) - 1) + 0.5))
+            bar = " " + blocks[n] if phase == "hearing" else ""
+        faces = {
+            "listening": "🎙 listening", "hearing": "🎙 hearing",
+            "thinking": "✍ transcribing", "speaking": "🔊 speaking",
+            "wake": "💤 wake-word", "away": "⏸ not focused",
+            "off": "○ voice off",
+        }
+        print(f"vb {faces.get(phase, faces['off'])}{bar}")
+
+    elif cmd == "statusline-install":
+        # Opt-in: wire `vb statusline` into ~/.claude/settings.json without
+        # clobbering an existing status line (we back it up and merge).
+        import json as _json
+        cfg = Path.home() / ".claude" / "settings.json"
+        data = {}
+        if cfg.exists():
+            try:
+                data = _json.loads(cfg.read_text())
+            except Exception:
+                print(f"couldn't parse {cfg}; not touching it")
+                return 1
+            cfg.with_suffix(".json.vbbak").write_text(cfg.read_text())
+        data["statusLine"] = {"type": "command",
+                              "command": f"{SELF} statusline"}
+        cfg.parent.mkdir(parents=True, exist_ok=True)
+        cfg.write_text(_json.dumps(data, indent=2))
+        print(f"status line wired into {cfg} (backup: settings.json.vbbak). "
+              "Restart Claude Code to see it.")
 
     elif cmd == "hush":
         core.hush()
