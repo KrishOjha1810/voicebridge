@@ -155,6 +155,44 @@ def set_hud(phase: str, level: float = 0.0, text: str = "") -> None:
         pass
 
 
+_SL_LABEL = {
+    "listening": "🎙 voice on", "hearing": "🎙 hearing you",
+    "thinking": "✍ working", "speaking": "🔊 speaking",
+    "wake": "💤 wake-word", "speakonly": "🔉 reads replies",
+    "away": "⏸ paused", "off": "○ voice off",
+}
+# States with one obviously-right hint show it; the rest rotate through tips.
+_SL_CRITICAL = {
+    "speaking": 'say "stop" or ⌃⌥⌘X to cut in',
+    "off": '/voice-agent to talk · /voice-on to just hear replies',
+    "wake": 'say "hey Claude …" to talk',
+    "away": 'focus this window to resume',
+    "thinking": 'one moment…',
+}
+# Rotating tips: a different one each refresh so features get discovered.
+_SL_TIPS = [
+    'say "faster" / "slower", or tap F9 / F7, to change speed',
+    'say "wake word mode" to only listen after "hey Claude"',
+    'say "stop listening" to mute  ·  ⌃⌥⌘X silences now',
+    '⌃⌥⌘Z stops Claude mid-answer',
+    '/voice-agent = hands-free  ·  /voice-on = just hear replies',
+    'talk over a reply to interrupt and redirect it',
+]
+
+
+def render_statusline(hud: dict, n: int = 0, update_cmd: str = "") -> str:
+    """Build the one-line status text: [update alert] state · hint. Pure and
+    testable. `n` rotates the tips (the line refreshes on activity, so a
+    different tip shows each time). `update_cmd`, when set, prepends an alert
+    with the exact command to run."""
+    phase = hud.get("phase", "off")
+    if phase not in _SL_LABEL:
+        phase = "off"
+    hint = _SL_CRITICAL.get(phase) or _SL_TIPS[n % len(_SL_TIPS)]
+    alert = f"⬆ {update_cmd}  ·  " if update_cmd else ""
+    return f"vb {alert}{_SL_LABEL[phase]}  ·  {hint}"
+
+
 def read_hud() -> dict:
     """Current indicator state. Returns phase 'off' if the file is missing or
     stale (no update recently), i.e. the daemon isn't actually listening, so

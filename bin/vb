@@ -473,30 +473,38 @@ def main(argv) -> int:
                 sys.stdin.read()
         except Exception:
             pass
+        import os
         h = core.read_hud()
-        phase = h.get("phase", "off")
-        # state -> (label, hint the user can act on right now)
-        info = {
-            "listening": ("🎙 voice on", "just talk · say \"stop listening\" to mute"),
-            "hearing":   ("🎙 hearing you", "say \"stop listening\" to mute"),
-            "thinking":  ("✍ working", "one moment…"),
-            "speaking":  ("🔊 speaking", "say \"stop\" or ⌃⌥⌘X to cut in"),
-            "wake":      ("💤 wake-word", "say \"hey Claude …\" to talk"),
-            "speakonly": ("🔉 reads replies", "type, or press space to dictate"),
-            "away":      ("⏸ paused", "focus this window to resume"),
-            "off":       ("○ voice off", "/voice-agent to talk · /voice-on to just hear replies"),
-        }
-        label, hint = info.get(phase, info["off"])
-        # Update alert: the running daemon fingerprints its code; if the repo
-        # has newer code than the daemon is running, prompt a quick restart.
-        alert = ""
+        # Rotate the tips: bump a counter each refresh so a different
+        # suggestion shows each time (the line refreshes on activity).
+        cnt_file = core.STATE_DIR / "statusline_n"
         try:
-            from vb import talkd as _td
-            if _td.VER.exists() and _td.VER.read_text().strip() != _td._code_version():
-                alert = "⬆ update ready: /voice-off then /voice-on  ·  "
+            n = int(cnt_file.read_text().strip()) + 1
+        except Exception:
+            n = 0
+        try:
+            core.STATE_DIR.mkdir(parents=True, exist_ok=True)
+            cnt_file.write_text(str(n))
         except Exception:
             pass
-        print(f"vb {alert}{label}  ·  {hint}")
+        # Update alert with the exact command for THIS install type.
+        update_cmd = ""
+        try:
+            from vb import talkd as _td
+            repo = Path(SELF).resolve().parent.parent
+            is_clone = (repo / ".git").is_dir()
+            daemon_stale = (_td.VER.exists()
+                            and _td.VER.read_text().strip() != _td._code_version())
+            flagged = (core.STATE_DIR / "update_available").exists()
+            if is_clone and daemon_stale:
+                update_cmd = "update ready: /voice-off then /voice-on"
+            elif is_clone and flagged:
+                update_cmd = "update: run  vb update"
+            elif flagged:   # plugin install
+                update_cmd = "update: /plugin marketplace update voicebridge"
+        except Exception:
+            pass
+        print(core.render_statusline(h, n=n, update_cmd=update_cmd))
 
     elif cmd == "statusline-install":
         # Opt-in: wire `vb statusline` into ~/.claude/settings.json without
